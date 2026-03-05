@@ -30,7 +30,10 @@ public struct AppleDocsSearcher: Sendable {
             forHTTPHeaderField: "User-Agent"
         )
 
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
+            return SearchResponse(query: query, results: [])
+        }
         guard let html = String(data: data, encoding: .utf8) else {
             return SearchResponse(query: query, results: [])
         }
