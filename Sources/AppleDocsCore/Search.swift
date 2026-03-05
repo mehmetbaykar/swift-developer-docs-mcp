@@ -1,6 +1,10 @@
 import Foundation
 import SwiftSoup
 
+#if canImport(FoundationNetworking)
+  import FoundationNetworking
+#endif
+
 public struct SearchResult: Codable, Sendable {
   public let title: String
   public let url: String
