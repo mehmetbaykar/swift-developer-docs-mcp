@@ -1,0 +1,12 @@
+.build/
+.git/
+.github/
+.vscode/
+.claude/
+Tests/
+docs/
+old-code-base/
+*.xcodeproj/
+xcuserdata/
+DerivedData/
+.DS_Store
