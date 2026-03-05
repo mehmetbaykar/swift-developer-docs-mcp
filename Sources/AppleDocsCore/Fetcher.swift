@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(FoundationNetworking)
+  import FoundationNetworking
+#endif
+
 public enum FetchError: Error, LocalizedError, Sendable {
   case httpError(statusCode: Int, url: String)
   case decodingError(underlying: String, url: String)
