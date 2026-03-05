@@ -6,6 +6,16 @@ struct SearchAppleDocsTool: MCPTool {
     let name = "searchAppleDocumentation"
     let description: String? = "Search Apple Developer documentation and return structured results"
 
+    var annotations: Tool.Annotations {
+        Tool.Annotations(
+            title: "Search Apple Documentation",
+            readOnlyHint: true,
+            destructiveHint: false,
+            idempotentHint: true,
+            openWorldHint: true
+        )
+    }
+
     @Schemable
     struct Parameters: Sendable {
         let query: String
