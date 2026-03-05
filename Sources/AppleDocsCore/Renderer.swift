@@ -300,6 +300,7 @@ public struct DocumentRenderer: Sendable {
     static func renderTopicSections(_ topics: [TopicSection], variants: [ContentItem]?, refs: [String: ContentItem]?) -> String {
         var markdown = ""
         for topic in topics {
+            guard !topic.title.isEmpty else { continue }
             markdown += "## \(topic.title)\n\n"
             if let identifiers = topic.identifiers {
                 for id in identifiers {
@@ -357,7 +358,7 @@ public struct DocumentRenderer: Sendable {
     static func renderSeeAlso(_ sections: [SeeAlsoSection], variants: [ContentItem]?, refs: [String: ContentItem]?) -> String {
         var markdown = ""
         for section in sections {
-            guard let identifiers = section.identifiers else { continue }
+            guard let identifiers = section.identifiers, !section.title.isEmpty else { continue }
             markdown += "## \(section.title)\n\n"
             for id in identifiers {
                 let info = variants?.first { $0.identifier == id }
@@ -409,7 +410,7 @@ public struct DocumentRenderer: Sendable {
             let methodSignature = String(lastStr[match])
 
             // Try to extract just the part before the disambiguation suffix
-            if let dashRange = lastStr.range(of: #"-[a-z0-9]+$"#, options: .regularExpression) {
+            if let dashRange = lastStr.range(of: #"-\w+$"#, options: .regularExpression) {
                 let withoutSuffix = String(lastStr[lastStr.startIndex..<dashRange.lowerBound])
                 if withoutSuffix.contains("(") && withoutSuffix.contains(")") {
                     return withoutSuffix
