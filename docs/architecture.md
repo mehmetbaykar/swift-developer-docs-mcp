@@ -4,36 +4,76 @@
 
 The project has two targets:
 
-- **AppleDocsCore** — a pure Swift library with no MCP dependencies. Handles fetching, parsing, and rendering Apple documentation.
-- **swift-developer-docs-mcp** — a thin executable that wires the core library into an MCP server using FastMCP.
+- **AppleDocsCore** — a pure Swift library with no MCP dependencies. Handles fetching, parsing, rendering, and shared action logic.
+- **swift-developer-docs-mcp** — an executable that provides both a CLI interface and an MCP server, both backed by the same core library.
 
 ```
-┌─────────────────────────────────┐
-│    Claude Desktop / MCP Client  │
-└──────────────┬──────────────────┘
-               │ stdio (JSON-RPC)
-┌──────────────▼──────────────────┐
-│   swift-developer-docs-mcp     │
-│   (FastMCP server)              │
-│   ┌───────────┐ ┌────────────┐ │
-│   │SearchTool │ │ FetchTool  │ │
-│   └─────┬─────┘ └─────┬──────┘ │
-└─────────┼──────────────┼────────┘
-          │              │
-┌─────────▼──────────────▼────────┐
-│       AppleDocsCore             │
-│  ┌─────────┐  ┌──────────────┐  │
-│  │ Search  │  │   Fetcher    │  │
-│  └────┬────┘  └──────┬───────┘  │
-│       │              │          │
-│       │       ┌──────▼───────┐  │
-│       │       │  Renderer    │  │
-│       │       └──────────────┘  │
-│  ┌────▼──────────────────────┐  │
-│  │  Types / URLUtilities     │  │
-│  └───────────────────────────┘  │
-└─────────────────────────────────┘
+┌─────────────────────────────────┐    ┌──────────────────────┐
+│    Claude Desktop / MCP Client  │    │    CLI / Shell        │
+└──────────────┬──────────────────┘    └──────────┬───────────┘
+               │ stdio (JSON-RPC)                 │ subcommands
+┌──────────────▼──────────────────────────────────▼───────────┐
+│                  swift-developer-docs-mcp                   │
+│                                                             │
+│   ┌───────────┐ ┌────────────┐   ┌───────────┐ ┌────────┐  │
+│   │SearchTool │ │ FetchTool  │   │SearchCmd  │ │FetchCmd│  │
+│   └─────┬─────┘ └─────┬──────┘   └─────┬─────┘ └───┬────┘  │
+│         │              │                │            │       │
+│         │         MCP Tools          Commands        │       │
+│         │     (FastMCP wrappers)  (CLICommand)       │       │
+└─────────┼──────────────┼────────────────┼────────────┼──────┘
+          │              │                │            │
+┌─────────▼──────────────▼────────────────▼────────────▼──────┐
+│                     AppleDocsCore                           │
+│                                                             │
+│   ┌──────────────────────────────────────────────────────┐  │
+│   │              AppleDocsActions                        │  │
+│   │  .search(query:) → SearchOutput                     │  │
+│   │  .fetch(path:)   → String (markdown)                │  │
+│   └───────────┬──────────────────────┬───────────────────┘  │
+│               │                      │                      │
+│   ┌───────────▼──────┐    ┌─────────▼──────────────────┐   │
+│   │    Search        │    │   Fetcher → Renderer       │   │
+│   │ (HTML parsing)   │    │ (JSON fetch → Markdown)    │   │
+│   └──────────────────┘    └────────────────────────────┘   │
+│                                                             │
+│   ┌─────────────────────────────────────────────────────┐   │
+│   │           Types / URLUtilities                      │   │
+│   └─────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+## Entry Point
+
+`Main.swift` creates a `CLIRouter` and checks for subcommands. If a subcommand matches (`search`, `fetch`, `help`), it runs in CLI mode and exits. Otherwise, it starts the MCP server.
+
+```
+args present? ──yes──▶ CLIRouter ──▶ matched command ──▶ run & exit
+      │
+      no
+      │
+      ▼
+  FastMCP server (stdio)
+```
+
+## Shared Action Layer
+
+`AppleDocsActions` is the single source of truth for search and fetch logic. Both MCP tools and CLI commands delegate to it:
+
+- `AppleDocsActions.search(query:)` — calls `AppleDocsSearcher.search()`, formats results, encodes JSON
+- `AppleDocsActions.fetch(path:)` — normalizes path, fetches JSON, renders Markdown, validates content length
+
+This eliminates duplication between the CLI and MCP interfaces. Adding a new interface (e.g., HTTP server) only requires writing thin wrappers around `AppleDocsActions`.
+
+## CLI Layer
+
+The CLI uses a simple protocol-based design:
+
+- **`CLICommand`** — protocol with `name`, `usage`, and `run(arguments:)`
+- **`CLIRouter`** — takes an array of commands, matches the first argument, dispatches
+- **`SearchCommand`** / **`FetchCommand`** — thin wrappers that call `AppleDocsActions` and print to stdout
+
+New CLI commands are added by conforming to `CLICommand` and registering in `CLIRouter`'s default array.
 
 ## Core Library Modules
 
@@ -90,15 +130,23 @@ The largest module. Converts `AppleDocJSON` into Markdown with:
 
 Recursion is depth-limited (content: 50, inline: 20) to prevent stack overflow on malformed data.
 
+### Actions.swift
+
+Shared action layer that both MCP tools and CLI commands call:
+
+- `search(query:)` returns `SearchOutput` with formatted text and JSON string
+- `fetch(path:)` returns rendered Markdown string
+- `FetchError` provides typed errors for invalid paths and insufficient content
+
 ## MCP Layer
 
 ### SearchTool
 
-Wraps `AppleDocsSearcher.search()`. Returns human-readable formatted text plus JSON-encoded structured data.
+Wraps `AppleDocsActions.search()`. Returns both formatted text and JSON as separate `ToolContentItem` entries.
 
 ### FetchTool
 
-Wraps the fetch-and-render pipeline: normalize path, fetch JSON, render to Markdown, validate minimum content length.
+Wraps `AppleDocsActions.fetch()`. Returns the rendered Markdown as a single `ToolContentItem`.
 
 ### Both tools declare MCP annotations:
 - `readOnlyHint: true` — no side effects

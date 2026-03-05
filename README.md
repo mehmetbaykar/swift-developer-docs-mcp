@@ -2,7 +2,7 @@
 
 A Swift MCP (Model Context Protocol) server that makes Apple Developer Documentation readable by AI tools like Claude. Apple's docs are JavaScript-rendered and invisible to LLMs — this server fetches the underlying JSON data and converts it to clean Markdown.
 
-Built as a native Swift CLI tool that communicates over stdio, designed for local use with Claude Desktop.
+Works in two modes: as a **CLI tool** for direct use and Claude Code skills, or as an **MCP server** for Claude Desktop.
 
 ## Features
 
@@ -23,9 +23,30 @@ Built as a native Swift CLI tool that communicates over stdio, designed for loca
 swift build
 ```
 
-## Usage with Claude Desktop
+## Usage
 
-Build the project, then add to your `claude_desktop_config.json`:
+### CLI Mode
+
+```bash
+# Search for documentation
+.build/debug/swift-developer-docs-mcp search "SwiftUI View"
+
+# Fetch a specific documentation page as Markdown
+.build/debug/swift-developer-docs-mcp fetch swift/array
+
+# Show available commands
+.build/debug/swift-developer-docs-mcp help
+```
+
+### MCP Server Mode (Claude Desktop)
+
+Run with no arguments to start the MCP server over stdio:
+
+```bash
+.build/debug/swift-developer-docs-mcp
+```
+
+Add to your `claude_desktop_config.json`:
 
 ```json
 {
@@ -43,6 +64,16 @@ Restart Claude Desktop. You can then ask Claude things like:
 - "Fetch the docs for swift/array"
 - "Show me the documentation for combine/publisher"
 
+### Claude Code Skill
+
+Copy `apple-docs.md` into `~/.claude/commands/` to use it as a Claude Code skill:
+
+```
+/apple-docs SwiftUI View
+```
+
+The skill calls the CLI binary under the hood — search first, then fetch if a specific page is found.
+
 ## MCP Tools
 
 | Tool | Description |
@@ -54,19 +85,25 @@ Restart Claude Desktop. You can then ask Claude things like:
 
 ```
 Sources/
-  AppleDocsCore/          # Core library (no MCP dependency)
-    Types.swift           # Codable types for Apple's JSON API
-    URLUtilities.swift    # Path normalization and URL generation
-    Fetcher.swift         # HTTP fetching with user-agent rotation
-    Search.swift          # HTML search result parsing (SwiftSoup)
-    Renderer.swift        # JSON-to-Markdown rendering engine
-  swift-developer-docs-mcp/  # MCP executable
-    Main.swift            # Entry point, FastMCP server setup
-    Tools/                # MCP tool definitions
-    Resources/            # MCP resource definitions
+  AppleDocsCore/              # Core library (no MCP dependency)
+    Types.swift               # Codable types for Apple's JSON API
+    URLUtilities.swift        # Path normalization and URL generation
+    Fetcher.swift             # HTTP fetching with user-agent rotation
+    Search.swift              # HTML search result parsing (SwiftSoup)
+    Renderer.swift            # JSON-to-Markdown rendering engine
+    Actions.swift             # Shared search/fetch logic (single source of truth)
+  swift-developer-docs-mcp/   # Executable (CLI + MCP server)
+    Main.swift                # Entry point, routes CLI vs MCP server
+    Commands/                 # CLI subcommands
+      CLICommand.swift        # Command protocol
+      CLIRouter.swift         # Argument routing
+      SearchCommand.swift     # `search` subcommand
+      FetchCommand.swift      # `fetch` subcommand
+    Tools/                    # MCP tool definitions
+    Resources/                # MCP resource definitions
 Tests/
-  AppleDocsCoreTests/     # 56 tests covering URL, rendering, and integration
-    Fixtures/             # Real Apple documentation JSON for testing
+  AppleDocsCoreTests/         # 56 tests covering URL, rendering, and integration
+    Fixtures/                 # Real Apple documentation JSON for testing
 ```
 
 See [docs/architecture.md](docs/architecture.md) for detailed architecture documentation.
