@@ -6,8 +6,11 @@ on:
 
 jobs:
   build:
-    name: Build (macOS)
-    runs-on: macos-26
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-26]
+        swift: ["6.2"]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
 
@@ -23,20 +26,43 @@ jobs:
           restore-keys: |
             swiftpm-release-${{ runner.os }}-
 
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
+
       - name: Swift version
         run: swift --version
 
-      - name: Build
-        run: swift build -c release
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          swift build -c release \
+            --static-swift-stdlib \
+            -Xswiftc -Osize
+          strip .build/release/swift-developer-docs-mcp
+          echo "Binary size:"
+          ls -lh .build/release/swift-developer-docs-mcp
 
-      - name: Test
-        run: swift test
+      - name: Build (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          swift build -c release \
+            -Xswiftc -Osize \
+            -Xlinker -dead_strip
+          strip -rSTx .build/release/swift-developer-docs-mcp
+          echo "Binary size:"
+          ls -lh .build/release/swift-developer-docs-mcp
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: binary-${{ runner.os }}
+          path: .build/release/swift-developer-docs-mcp
 
   publish:
     needs: build
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       id-token: write
     steps:
       - uses: actions/checkout@v6
@@ -46,5 +72,26 @@ jobs:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: binary-*
+          path: artifacts
+
+      - name: Show artifact sizes
+        run: |
+          echo "Binary sizes:"
+          ls -lh artifacts/*/swift-developer-docs-mcp
+
       - name: Publish to npm
-        run: npm publish --provenance --access public
+        id: npm_publish
+        run: ./scripts/publish-npm.sh
+
+      - name: Cleanup on failure
+        if: failure() && steps.npm_publish.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "npm publish failed, cleaning up release and tag..."
+          gh release delete "${{ github.event.release.tag_name }}" --yes || true
+          git push --delete origin "${{ github.event.release.tag_name }}" || true
+          echo "Cleanup complete. Retry by creating a new release."

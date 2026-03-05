@@ -2,30 +2,33 @@
   "name": "@mehmetbaykar/swift-developer-docs-mcp",
   "version": "1.0.1",
   "description": "MCP server for Apple Developer Documentation — search and fetch docs as Markdown for AI tools",
-  "keywords": ["mcp", "apple", "documentation", "swift", "swiftui", "claude"],
   "author": "Mehmet Baykar",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/mehmetbaykar/swift-developer-docs-mcp.git"
   },
-  "homepage": "https://github.com/mehmetbaykar/swift-developer-docs-mcp",
-  "bugs": {
-    "url": "https://github.com/mehmetbaykar/swift-developer-docs-mcp/issues"
-  },
-  "os": ["darwin"],
-  "engines": {
-    "node": ">=18"
+  "bin": {
+    "swift-developer-docs-mcp": "bin.js"
   },
   "scripts": {
-    "postinstall": "node scripts/postinstall.js"
+    "build": "swift build",
+    "start": "swift build && node bin.js"
   },
   "files": [
-    "Sources/",
-    "Package.swift",
-    "Package.resolved",
-    "scripts/",
-    "README.md",
-    "LICENSE"
+    "bin.js",
+    "bin"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "apple",
+    "documentation",
+    "swift",
+    "swiftui",
+    "claude"
   ]
 }
