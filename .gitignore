@@ -7,3 +7,9 @@ DerivedData/
 .vscode/
 swift-poe-search-mcp-main/
 bin/
+.secrets
+.env
+.env.*
+*.pem
+*.key
+*.p12
