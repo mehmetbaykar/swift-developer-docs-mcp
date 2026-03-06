@@ -20,16 +20,35 @@ Works in two modes: as a **CLI tool** for direct use and Claude Code skills, or 
 - Rotates through 26 user-agent strings to avoid rate limiting
 - Full platform availability info, breadcrumb navigation, and code blocks
 
-## Requirements
+## Installation
 
-- macOS 14+
-- Swift 6.0+
+### Via npm (recommended)
 
-## Build
+No build step required — prebuilt binaries for macOS (Apple Silicon) and Linux (x64):
 
 ```bash
+# Run directly
+npx @mehmetbaykar/swift-developer-docs-mcp help
+
+# Or install globally
+npm install -g @mehmetbaykar/swift-developer-docs-mcp
+swift-developer-docs-mcp help
+```
+
+### Build from source
+
+Requires macOS 14+ and Swift 6.0+:
+
+```bash
+git clone https://github.com/mehmetbaykar/swift-developer-docs-mcp.git
+cd swift-developer-docs-mcp
 swift build
 ```
+
+## Requirements
+
+- **npm install**: Node.js 20+
+- **Build from source**: macOS 14+, Swift 6.0+
 
 ## Usage
 
@@ -37,24 +56,43 @@ swift build
 
 ```bash
 # Search for documentation
-.build/debug/swift-developer-docs-mcp search "SwiftUI View"
+npx @mehmetbaykar/swift-developer-docs-mcp search "SwiftUI View"
 
 # Fetch a specific documentation page as Markdown
-.build/debug/swift-developer-docs-mcp fetch swift/array
+npx @mehmetbaykar/swift-developer-docs-mcp fetch swift/array
 
 # Show available commands
+npx @mehmetbaykar/swift-developer-docs-mcp help
+```
+
+<details>
+<summary>Using a local build</summary>
+
+```bash
+.build/debug/swift-developer-docs-mcp search "SwiftUI View"
+.build/debug/swift-developer-docs-mcp fetch swift/array
 .build/debug/swift-developer-docs-mcp help
 ```
 
+</details>
+
 ### MCP Server Mode (Claude Desktop)
 
-Run with no arguments to start the MCP server over stdio:
+Add to your `claude_desktop_config.json`:
 
-```bash
-.build/debug/swift-developer-docs-mcp
+```json
+{
+  "mcpServers": {
+    "apple-docs": {
+      "command": "npx",
+      "args": ["-y", "@mehmetbaykar/swift-developer-docs-mcp"]
+    }
+  }
+}
 ```
 
-Add to your `claude_desktop_config.json`:
+<details>
+<summary>Using a local build</summary>
 
 ```json
 {
@@ -65,6 +103,8 @@ Add to your `claude_desktop_config.json`:
   }
 }
 ```
+
+</details>
 
 Restart Claude Desktop. You can then ask Claude things like:
 
@@ -89,7 +129,9 @@ The skill calls the CLI binary under the hood — search first, then fetch if a 
 | `searchAppleDocumentation` | Search Apple Developer docs by keyword. Returns titles, URLs, descriptions, breadcrumbs, and tags. |
 | `fetchAppleDocumentation` | Fetch a documentation page by path (e.g. `swift/array`, `swiftui/view`) and return rendered Markdown. |
 
-## Project Structure
+## Development
+
+### Project Structure
 
 ```
 Sources/
@@ -116,7 +158,7 @@ Tests/
 
 See [docs/architecture.md](docs/architecture.md) for detailed architecture documentation.
 
-## Testing
+### Testing
 
 ```bash
 swift test

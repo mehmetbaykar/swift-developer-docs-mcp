@@ -1,6 +1,6 @@
 {
   "name": "@mehmetbaykar/swift-developer-docs-mcp",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "MCP server for Apple Developer Documentation — search and fetch docs as Markdown for AI tools",
   "author": "Mehmet Baykar",
   "license": "MIT",
