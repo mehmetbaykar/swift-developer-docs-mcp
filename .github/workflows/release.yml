@@ -85,6 +85,8 @@ jobs:
       - name: Publish to npm
         id: npm_publish
         run: ./scripts/publish-npm.sh
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Cleanup on failure
         if: failure() && steps.npm_publish.outcome == 'failure'
