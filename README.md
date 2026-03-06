@@ -114,13 +114,26 @@ Restart Claude Desktop. You can then ask Claude things like:
 
 ### Claude Code Skill
 
-Copy `apple-docs.md` into `~/.claude/commands/` to use it as a Claude Code skill:
+The `skills/apple-docs.md` file is a Claude Code skill. Copy it to your personal skills directory:
+
+```bash
+mkdir -p ~/.claude/skills/apple-docs
+cp skills/apple-docs.md ~/.claude/skills/apple-docs/SKILL.md
+```
+
+Or to your commands directory:
+
+```bash
+cp skills/apple-docs.md ~/.claude/commands/apple-docs.md
+```
+
+Then use it in Claude Code:
 
 ```
 /apple-docs SwiftUI View
 ```
 
-The skill calls the CLI binary under the hood — search first, then fetch if a specific page is found.
+The skill calls the CLI via `npx` under the hood — search first, then fetch the most relevant documentation page.
 
 ## MCP Tools
 
