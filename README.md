@@ -8,17 +8,15 @@ If you found this helpful, you can support more open source work!
 
 ---
 
-A Swift MCP (Model Context Protocol) server that makes Apple Developer Documentation readable by AI tools like Claude. Apple's docs are JavaScript-rendered and invisible to LLMs — this server fetches the underlying JSON data and converts it to clean Markdown.
+A tool that makes Apple Developer Documentation readable by AI tools and humans alike. Apple's docs are JavaScript-rendered and invisible to LLMs — this tool fetches the underlying JSON data and converts it to clean, structured Markdown with declarations, parameters, platform availability, topic sections, relationships, code examples, and see-also links.
 
-Works in two modes: as a **CLI tool** for direct use and Claude Code skills, or as an **MCP server** for Claude Desktop.
+Use it however you prefer:
 
-## Features
-
-- **Search** Apple Developer Documentation by keyword
-- **Fetch** any documentation page and get back structured Markdown
-- Renders declarations, parameters, topics, relationships, see-also sections, and more
-- Rotates through 26 user-agent strings to avoid rate limiting
-- Full platform availability info, breadcrumb navigation, and code blocks
+| Mode | Best for |
+|------|----------|
+| **CLI** | Direct terminal use, scripting, piping output |
+| **MCP Server** | Claude Code MCP integration (auto-available tools) |
+| **Claude Code Skill** | Claude Code — just type `/apple-docs SwiftUI View` |
 
 ## Installation
 
@@ -52,7 +50,9 @@ swift build
 
 ## Usage
 
-### CLI Mode
+### CLI Tool
+
+No MCP setup needed — use it directly from your terminal:
 
 ```bash
 # Search for documentation
@@ -65,20 +65,109 @@ npx @mehmetbaykar/swift-developer-docs-mcp fetch swift/array
 npx @mehmetbaykar/swift-developer-docs-mcp help
 ```
 
+Two commands, that's it:
+
+| Command | Description |
+|---------|-------------|
+| `search <query>` | Search Apple Developer docs by keyword. Returns titles, URLs, descriptions, breadcrumbs, and tags. |
+| `fetch <path>` | Fetch a doc page by path (e.g. `swift/array`, `swiftui/view`) and return rendered Markdown. |
+
 <details>
 <summary>Using a local build</summary>
 
 ```bash
 .build/debug/swift-developer-docs-mcp search "SwiftUI View"
 .build/debug/swift-developer-docs-mcp fetch swift/array
-.build/debug/swift-developer-docs-mcp help
 ```
 
 </details>
 
-### MCP Server Mode (Claude Desktop)
+<details>
+<summary>Example: search output</summary>
 
-Add to your `claude_desktop_config.json`:
+```
+Found 63 results for 'SwiftUI View':
+
+1. **SwiftUI**
+   URL: https://developer.apple.com/documentation/swiftui/
+   Declare the user interface and behavior for your app on every platform.
+   Path: SwiftUI > SwiftUI
+   Tags: DOCUMENTATION, Swift
+
+2. **Declaring a custom view**
+   URL: https://developer.apple.com/documentation/swiftui/declaring-a-custom-view/
+   Define views and assemble them into a view hierarchy.
+   Tags: DOCUMENTATION ARTICLE, Swift
+
+3. **View fundamentals**
+   URL: https://developer.apple.com/documentation/swiftui/view-fundamentals/
+   Define the visual elements of your app using a hierarchy of views.
+   Tags: DOCUMENTATION ARTICLE, Swift
+...
+```
+
+Results also include structured JSON for programmatic use. Result types include `DOCUMENTATION`, `DOCUMENTATION ARTICLE`, `SAMPLE CODE`, and `WWDC VIDEO`.
+
+</details>
+
+<details>
+<summary>Example: fetch output</summary>
+
+```markdown
+---
+title: Array
+description: An ordered, random-access collection.
+source: https://developer.apple.com/documentation/swift/array
+timestamp: 2026-03-06T16:53:29.827Z
+---
+
+**Navigation:** [Swift](/documentation/swift)
+
+**Structure**
+
+# Array
+
+**Available on:** iOS 8.0+, iPadOS 8.0+, macOS 10.10+, visionOS 1.0+, watchOS 2.0+
+
+> An ordered, random-access collection.
+
+@frozen struct Array<Element>
+
+## Overview
+Arrays are one of the most commonly used data types in an app...
+
+## Conforms To
+- BidirectionalCollection, Collection, Equatable, Hashable, Sendable...
+
+## Creating an Array
+- [init()] Creates a new, empty array.
+- [init(repeating:count:)] Creates a new array containing the specified number of a single, repeated value.
+
+## Accessing Elements
+- [subscript(_:)] Accesses the element at the specified position.
+- [first] The first element of the collection.
+
+## Adding Elements
+- [append(_:)] Adds a new element at the end of the array.
+- [insert(_:at:)] Inserts a new element at the specified position.
+...
+```
+
+The fetch output includes the full documentation: overview with Swift code examples, all topic sections (20+ categories for complex types), conformances, related types, and see-also links.
+
+</details>
+
+---
+
+### MCP Server (Claude Code)
+
+Add it as an MCP server in Claude Code and two tools become available automatically — `searchAppleDocumentation` and `fetchAppleDocumentation`:
+
+```bash
+claude mcp add apple-docs -- npx -y @mehmetbaykar/swift-developer-docs-mcp
+```
+
+Or add it to your `.claude/settings.json`:
 
 ```json
 {
@@ -94,6 +183,12 @@ Add to your `claude_desktop_config.json`:
 <details>
 <summary>Using a local build</summary>
 
+```bash
+claude mcp add apple-docs -- /absolute/path/to/.build/debug/swift-developer-docs-mcp
+```
+
+Or in `.claude/settings.json`:
+
 ```json
 {
   "mcpServers": {
@@ -106,17 +201,26 @@ Add to your `claude_desktop_config.json`:
 
 </details>
 
-Restart Claude Desktop. You can then ask Claude things like:
+Claude can then use the MCP tools directly when you ask things like:
 
 - "Search for SwiftUI View documentation"
 - "Fetch the docs for swift/array"
 - "Show me the documentation for combine/publisher"
 
+---
+
 ### Claude Code Skill
 
-The `skills/apple-docs.md` file is a Claude Code skill that teaches Claude how to search and fetch Apple documentation using this tool. It automatically searches for the query, fetches the most relevant result, and presents the full documentation — including declarations, parameters, platform availability, topic sections, and relationships.
+The `skills/apple-docs.md` file is a [Claude Code skill](https://docs.anthropic.com/en/docs/claude-code/skills) that gives Claude the ability to search and fetch Apple documentation on your behalf. When you invoke it, Claude will:
 
-Copy it to your personal skills directory:
+1. **Search** Apple's documentation for your query
+2. **Pick** the most relevant result
+3. **Fetch** the full documentation page
+4. **Present** the rendered Markdown — declarations, parameters, platform availability, topic sections, conformances, and related links
+
+#### Setup
+
+Copy it to your personal skills directory (available across all projects):
 
 ```bash
 mkdir -p ~/.claude/skills/apple-docs
@@ -129,7 +233,7 @@ Or to your commands directory:
 cp skills/apple-docs.md ~/.claude/commands/apple-docs.md
 ```
 
-Then use it in Claude Code:
+#### Use
 
 ```
 /apple-docs SwiftUI View
@@ -137,14 +241,7 @@ Then use it in Claude Code:
 /apple-docs URLSession
 ```
 
-The skill also activates automatically when Claude detects questions about Apple frameworks or APIs.
-
-## MCP Tools
-
-| Tool | Description |
-|------|-------------|
-| `searchAppleDocumentation` | Search Apple Developer docs by keyword. Returns titles, URLs, descriptions, breadcrumbs, and tags. |
-| `fetchAppleDocumentation` | Fetch a documentation page by path (e.g. `swift/array`, `swiftui/view`) and return rendered Markdown. |
+The skill also activates automatically when Claude detects questions about Apple frameworks or APIs — no need to invoke it manually every time.
 
 ## Development
 
