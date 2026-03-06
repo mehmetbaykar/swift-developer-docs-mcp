@@ -114,7 +114,9 @@ Restart Claude Desktop. You can then ask Claude things like:
 
 ### Claude Code Skill
 
-The `skills/apple-docs.md` file is a Claude Code skill. Copy it to your personal skills directory:
+The `skills/apple-docs.md` file is a Claude Code skill that teaches Claude how to search and fetch Apple documentation using this tool. It automatically searches for the query, fetches the most relevant result, and presents the full documentation — including declarations, parameters, platform availability, topic sections, and relationships.
+
+Copy it to your personal skills directory:
 
 ```bash
 mkdir -p ~/.claude/skills/apple-docs
@@ -131,9 +133,11 @@ Then use it in Claude Code:
 
 ```
 /apple-docs SwiftUI View
+/apple-docs swift/array
+/apple-docs URLSession
 ```
 
-The skill calls the CLI via `npx` under the hood — search first, then fetch the most relevant documentation page.
+The skill also activates automatically when Claude detects questions about Apple frameworks or APIs.
 
 ## MCP Tools
 
