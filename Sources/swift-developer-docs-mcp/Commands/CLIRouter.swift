@@ -3,7 +3,7 @@ import Foundation
 struct CLIRouter {
   let commands: [CLICommand]
 
-  init(commands: [CLICommand] = [SearchCommand(), FetchCommand()]) {
+  init(commands: [CLICommand] = [SearchCommand(), FetchCommand(), ServeCommand()]) {
     self.commands = commands
   }
 

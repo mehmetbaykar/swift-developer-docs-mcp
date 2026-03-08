@@ -16,6 +16,8 @@ struct AppleDocsServer {
       .addTools([
         SearchAppleDocsTool(),
         FetchAppleDocsTool(),
+        FetchExternalDocTool(),
+        FetchVideoTranscriptTool(),
       ])
       .addResources([DocumentationResource()])
       .transport(.stdio)

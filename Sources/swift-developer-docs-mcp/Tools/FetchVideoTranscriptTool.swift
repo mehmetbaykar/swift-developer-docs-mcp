@@ -2,14 +2,14 @@ import AppleDocsCore
 import FastMCP
 import Foundation
 
-struct FetchAppleDocsTool: MCPTool {
-  let name = "fetchAppleDocumentation"
+struct FetchVideoTranscriptTool: MCPTool {
+  let name = "fetchAppleVideoTranscript"
   let description: String? =
-    "Fetch Apple Developer documentation and Human Interface Guidelines by path and return as markdown"
+    "Fetch transcript for an Apple Developer video path and return as markdown"
 
   var annotations: Tool.Annotations {
     Tool.Annotations(
-      title: "Fetch Apple Documentation",
+      title: "Fetch Apple Video Transcript",
       readOnlyHint: true,
       destructiveHint: false,
       idempotentHint: true,
@@ -24,11 +24,11 @@ struct FetchAppleDocsTool: MCPTool {
 
   func call(with args: Parameters) async throws(ToolError) -> Content {
     do {
-      let client = AppleDocsClient.live
-      let markdown = try await client.unifiedFetch(input: args.path)
+      let markdown = try await AppleDocsActions.fetchVideo(path: args.path)
       return [ToolContentItem(text: markdown)]
     } catch {
-      throw ToolError(error.localizedDescription)
+      throw ToolError(
+        "Error fetching Apple video transcript for \"\(args.path)\": \(error.localizedDescription)")
     }
   }
 }

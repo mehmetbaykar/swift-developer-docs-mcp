@@ -3,10 +3,12 @@ import Foundation
 
 struct SearchCommand: CLICommand {
   let name = "search"
-  let usage = "search <query> — Search Apple Developer documentation"
+  let usage = "search <query> [--json] — Search Apple Developer documentation"
 
   func run(arguments: [String]) async throws {
-    let query = arguments.joined(separator: " ")
+    let parsed = CLIArgParser.parse(arguments)
+    let query = parsed.positional.joined(separator: " ")
+
     guard !query.isEmpty else {
       printToStdErr("Error: search requires a query")
       printToStdErr("Usage: \(usage)")
@@ -14,7 +16,11 @@ struct SearchCommand: CLICommand {
     }
 
     let output = try await AppleDocsActions.search(query: query)
-    print(output.formatted)
-    print(output.json)
+
+    if parsed.json {
+      print(output.json)
+    } else {
+      print(output.formatted)
+    }
   }
 }

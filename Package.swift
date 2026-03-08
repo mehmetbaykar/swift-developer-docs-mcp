@@ -12,6 +12,7 @@ let package = Package(
   dependencies: [
     .package(url: "https://github.com/mehmetbaykar/swift-fast-mcp", from: "1.0.2"),
     .package(url: "https://github.com/scinfu/SwiftSoup", from: "2.7.0"),
+    .package(url: "https://github.com/hummingbird-project/hummingbird", from: "2.0.0"),
   ],
   targets: [
     .target(
@@ -23,6 +24,7 @@ let package = Package(
       dependencies: [
         "AppleDocsCore",
         .product(name: "FastMCP", package: "swift-fast-mcp"),
+        .product(name: "Hummingbird", package: "hummingbird"),
       ]
     ),
     .testTarget(
