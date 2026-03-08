@@ -1,6 +1,8 @@
 import Foundation
 
-public struct DocumentRenderer: Sendable {
+public typealias DocumentRenderer = ReferenceRenderer
+
+public struct ReferenceRenderer: Sendable {
   private static let maxContentDepth = 50
   private static let maxInlineDepth = 20
   public static let minContentLength = 100
