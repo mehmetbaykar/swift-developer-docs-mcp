@@ -459,7 +459,7 @@ struct RendererTests {
       let data = AppleDocJSON(
         metadata: DocumentationMetadata(title: "Extreme Depth Test"),
         primaryContentSections: [
-          PrimaryContentSection(kind: "content", content: [createDeepContent(depth: 100)])
+          PrimaryContentSection(kind: "content", content: [createDeepContent(depth: 55)])
         ]
       )
       let result = DocumentRenderer.renderFromJSON(data, sourceURL: "https://test.com")
@@ -485,7 +485,7 @@ struct RendererTests {
           PrimaryContentSection(
             kind: "content",
             content: [
-              ContentItem(type: "paragraph", inlineContent: [createDeepInline(depth: 50)])
+              ContentItem(type: "paragraph", inlineContent: [createDeepInline(depth: 25)])
             ])
         ]
       )

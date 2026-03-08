@@ -3,8 +3,6 @@ import Foundation
 public typealias DocumentRenderer = ReferenceRenderer
 
 public struct ReferenceRenderer: Sendable {
-  private static let maxContentDepth = 50
-  private static let maxInlineDepth = 20
   public static let minContentLength = 100
 
   public static func renderFromJSON(_ jsonData: AppleDocJSON, sourceURL: String) -> String {
@@ -54,6 +52,11 @@ public struct ReferenceRenderer: Sendable {
         markdown += renderParameters(parameters, references: jsonData.references)
       }
 
+      let propertiesSection = primarySections.first { $0.kind == "properties" }
+      if let properties = propertiesSection?.items {
+        markdown += ContentRenderer.renderProperties(properties, references: jsonData.references)
+      }
+
       let contentSections = primarySections.filter { $0.kind == "content" }
       for section in contentSections {
         if let content = section.content {
@@ -93,6 +96,8 @@ public struct ReferenceRenderer: Sendable {
 
     return markdown
   }
+
+  // MARK: - Private Helpers
 
   private static func swiftItemToIndexItem(_ item: SwiftInterfaceItem) -> IndexContentItem {
     IndexContentItem(
@@ -180,150 +185,52 @@ public struct ReferenceRenderer: Sendable {
     for param in params {
       markdown += "**\(param.name)**\n\n"
       if let content = param.content {
-        let paramText = renderContentArray(content, references: references, depth: 0)
+        let paramText = ContentRenderer.renderContentArray(
+          content, references: references, depth: 0)
         markdown += "\(paramText)\n\n"
       }
     }
     return markdown
   }
 
+  // MARK: - Delegating to ContentRenderer
+
   static func renderContentArray(
     _ content: [ContentItem], references: [String: ContentItem]?, depth: Int = 0
   ) -> String {
-    if depth > maxContentDepth {
-      return "[Content too deeply nested]"
-    }
-
-    var markdown = ""
-    for item in content {
-      switch item.type {
-      case "heading":
-        let level = min(item.level ?? 2, 6)
-        let hashes = String(repeating: "#", count: level)
-        markdown += "\(hashes) \(item.text ?? "")\n\n"
-
-      case "paragraph":
-        if let inlineContent = item.inlineContent {
-          let text = renderInlineContent(inlineContent, references: references, depth: depth)
-          markdown += "\(text)\n\n"
-        }
-
-      case "codeListing":
-        var code = ""
-        if let codeValue = item.code {
-          switch codeValue {
-          case .single(let s): code = s
-          case .multiple(let arr): code = arr.joined(separator: "\n")
-          }
-        }
-        let syntax = item.syntax ?? "swift"
-        markdown += "```\(syntax)\n\(code)\n```\n\n"
-
-      case "unorderedList":
-        if let items = item.items {
-          for listItem in items {
-            let itemText = renderContentArray(
-              listItem.content ?? [], references: references, depth: depth + 1)
-            markdown +=
-              "- \(itemText.replacingOccurrences(of: "\\n\\n$", with: "", options: .regularExpression))\n"
-          }
-          markdown += "\n"
-        }
-
-      case "orderedList":
-        if let items = item.items {
-          for (index, listItem) in items.enumerated() {
-            let itemText = renderContentArray(
-              listItem.content ?? [], references: references, depth: depth + 1)
-            markdown +=
-              "\(index + 1). \(itemText.replacingOccurrences(of: "\\n\\n$", with: "", options: .regularExpression))\n"
-          }
-          markdown += "\n"
-        }
-
-      case "aside":
-        let style = item.style ?? "note"
-        let calloutType = mapAsideStyleToCallout(style)
-        let asideContent =
-          item.content != nil
-          ? renderContentArray(item.content!, references: references, depth: depth + 1)
-          : ""
-        let cleanContent = asideContent.trimmingCharacters(in: .whitespacesAndNewlines)
-          .replacingOccurrences(of: "\n", with: "\n> ")
-        markdown += "> [!\(calloutType)]\n> \(cleanContent)\n\n"
-
-      default:
-        break
-      }
-    }
-    return markdown
+    ContentRenderer.renderContentArray(content, references: references, depth: depth)
   }
 
   static func renderInlineContent(
     _ inlineContent: [ContentItem], references: [String: ContentItem]?, depth: Int = 0
   ) -> String {
-    if depth > maxInlineDepth {
-      return "[Inline content too deeply nested]"
-    }
-
-    return inlineContent.map { item in
-      switch item.type {
-      case "text":
-        return item.text ?? ""
-      case "codeVoice":
-        if let codeValue = item.code {
-          switch codeValue {
-          case .single(let s): return "`\(s)`"
-          case .multiple(let arr): return "`\(arr.joined())`"
-          }
-        }
-        return ""
-      case "reference":
-        let title = item.title ?? item.text ?? ""
-        let url =
-          item.identifier != nil
-          ? convertIdentifierToURL(item.identifier!, references: references)
-          : ""
-        return "[\(title)](\(url))"
-      case "emphasis":
-        let inner =
-          item.inlineContent != nil
-          ? renderInlineContent(item.inlineContent!, references: references, depth: depth + 1)
-          : ""
-        return "*\(inner)*"
-      case "strong":
-        let inner =
-          item.inlineContent != nil
-          ? renderInlineContent(item.inlineContent!, references: references, depth: depth + 1)
-          : ""
-        return "**\(inner)**"
-      default:
-        return item.text ?? ""
-      }
-    }.joined()
+    ContentRenderer.renderInlineContent(inlineContent, references: references, depth: depth)
   }
 
+  static func convertIdentifierToURL(_ identifier: String, references: [String: ContentItem]?)
+    -> String
+  {
+    ContentRenderer.convertIdentifierToURL(identifier, references: references)
+  }
+
+  static func extractTitleFromIdentifier(_ identifier: String) -> String {
+    ContentRenderer.extractTitleFromIdentifier(identifier)
+  }
+
+  static func mapAsideStyleToCallout(_ style: String) -> String {
+    ContentRenderer.mapAsideStyleToCallout(style)
+  }
+
+  // MARK: - Relationship / Topic / SeeAlso / Index (reference-specific)
+
   static func renderRelationships(
-    _ rels: [ContentItem], variants: [ContentItem]?, refs: [String: ContentItem]?
+    _ rels: [ContentItem], variants: [Variant]?, refs: [String: ContentItem]?
   ) -> String {
-    var markdown = ""
-    for rel in rels {
-      guard let title = rel.title, let identifiers = rel.identifiers else { continue }
-      markdown += "## \(title)\n\n"
-      for id in identifiers {
-        let info = variants?.first { $0.identifier == id }
-        let reference = refs?[id]
-        let displayTitle = info?.title ?? reference?.title ?? extractTitleFromIdentifier(id)
-        let url = convertIdentifierToURL(id, references: refs)
-        markdown += "- [\(displayTitle)](\(url))\n"
-      }
-      markdown += "\n"
-    }
-    return markdown
+    ContentRenderer.renderRelationships(rels, variants: variants, refs: refs)
   }
 
   static func renderTopicSections(
-    _ topics: [TopicSection], variants: [ContentItem]?, refs: [String: ContentItem]?
+    _ topics: [TopicSection], variants: [Variant]?, refs: [String: ContentItem]?
   ) -> String {
     var markdown = ""
     for topic in topics {
@@ -334,8 +241,9 @@ public struct ReferenceRenderer: Sendable {
           let info = variants?.first { $0.identifier == id }
           let reference = refs?[id]
           if info != nil || reference != nil {
-            let displayTitle = info?.title ?? reference?.title ?? extractTitleFromIdentifier(id)
-            let url = convertIdentifierToURL(id, references: refs)
+            let displayTitle =
+              info?.title ?? reference?.title ?? ContentRenderer.extractTitleFromIdentifier(id)
+            let url = ContentRenderer.convertIdentifierToURL(id, references: refs)
             var abstractText = ""
             if let infoAbstract = info?.abstract {
               abstractText = infoAbstract.compactMap { $0.text }.joined()
@@ -348,8 +256,8 @@ public struct ReferenceRenderer: Sendable {
             }
             markdown += "\n"
           } else {
-            let displayTitle = extractTitleFromIdentifier(id)
-            let url = convertIdentifierToURL(id, references: refs)
+            let displayTitle = ContentRenderer.extractTitleFromIdentifier(id)
+            let url = ContentRenderer.convertIdentifierToURL(id, references: refs)
             markdown += "- [\(displayTitle)](\(url))\n"
           }
         }
@@ -385,7 +293,7 @@ public struct ReferenceRenderer: Sendable {
   }
 
   static func renderSeeAlso(
-    _ sections: [SeeAlsoSection], variants: [ContentItem]?, refs: [String: ContentItem]?
+    _ sections: [SeeAlsoSection], variants: [Variant]?, refs: [String: ContentItem]?
   ) -> String {
     var markdown = ""
     for section in sections {
@@ -394,71 +302,13 @@ public struct ReferenceRenderer: Sendable {
       for id in identifiers {
         let info = variants?.first { $0.identifier == id }
         let reference = refs?[id]
-        let displayTitle = info?.title ?? reference?.title ?? extractTitleFromIdentifier(id)
-        let url = convertIdentifierToURL(id, references: refs)
+        let displayTitle =
+          info?.title ?? reference?.title ?? ContentRenderer.extractTitleFromIdentifier(id)
+        let url = ContentRenderer.convertIdentifierToURL(id, references: refs)
         markdown += "- [\(displayTitle)](\(url))\n"
       }
       markdown += "\n"
     }
     return markdown
-  }
-
-  static func mapAsideStyleToCallout(_ style: String) -> String {
-    switch style.lowercased() {
-    case "warning": return "WARNING"
-    case "important": return "IMPORTANT"
-    case "caution": return "CAUTION"
-    case "tip": return "TIP"
-    case "deprecated": return "WARNING"
-    default: return "NOTE"
-    }
-  }
-
-  static func convertIdentifierToURL(_ identifier: String, references: [String: ContentItem]?)
-    -> String
-  {
-    if let reference = references?[identifier], let url = reference.url {
-      return url
-    }
-
-    if identifier.hasPrefix("doc://com.apple.SwiftUI/documentation/") {
-      return identifier.replacingOccurrences(
-        of: "doc://com.apple.SwiftUI/documentation/",
-        with: "/documentation/"
-      )
-    } else if identifier.hasPrefix("doc://com.apple.") {
-      if let range = identifier.range(of: #"\/documentation\/(.+)"#, options: .regularExpression) {
-        return String(identifier[range])
-      }
-    }
-    return identifier
-  }
-
-  static func extractTitleFromIdentifier(_ identifier: String) -> String {
-    let parts = identifier.split(separator: "/")
-    guard let lastPart = parts.last else { return identifier }
-    let lastStr = String(lastPart)
-
-    if let match = lastStr.range(of: #"^(.+?)(?:-\w+)?$"#, options: .regularExpression) {
-      let methodSignature = String(lastStr[match])
-
-      // Try to extract just the part before the disambiguation suffix
-      if let dashRange = lastStr.range(of: #"-\w+$"#, options: .regularExpression) {
-        let withoutSuffix = String(lastStr[lastStr.startIndex..<dashRange.lowerBound])
-        if withoutSuffix.contains("(") && withoutSuffix.contains(")") {
-          return withoutSuffix
-        }
-      }
-
-      if methodSignature.contains("(") && methodSignature.contains(")") {
-        return methodSignature
-      }
-    }
-
-    return
-      lastStr
-      .replacingOccurrences(of: #"([a-z])([A-Z])"#, with: "$1 $2", options: .regularExpression)
-      .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
-      .trimmingCharacters(in: .whitespaces)
   }
 }

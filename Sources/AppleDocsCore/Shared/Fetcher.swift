@@ -4,25 +4,32 @@ import Foundation
   import FoundationNetworking
 #endif
 
-public enum FetchError: Error, LocalizedError, Sendable {
-  case httpError(statusCode: Int, url: String)
-  case decodingError(underlying: String, url: String)
-  case invalidURL(String)
+public struct Fetcher: Sendable {
+  public var fetchJSON: @Sendable (_ path: String) async throws -> AppleDocJSON
+  public var fetchHTML: @Sendable (_ url: URL) async throws -> String
 
-  public var errorDescription: String? {
-    switch self {
-    case .httpError(let statusCode, let url):
-      return "HTTP \(statusCode) fetching \(url)"
-    case .decodingError(let underlying, let url):
-      return "Failed to decode JSON from \(url): \(underlying)"
-    case .invalidURL(let url):
-      return "Invalid URL: \(url)"
-    }
+  public init(
+    fetchJSON: @escaping @Sendable (String) async throws -> AppleDocJSON,
+    fetchHTML: @escaping @Sendable (URL) async throws -> String
+  ) {
+    self.fetchJSON = fetchJSON
+    self.fetchHTML = fetchHTML
   }
 }
 
-public struct Fetcher: Sendable {
-  private static let userAgents: [String] = [
+extension Fetcher {
+  public static let live = Fetcher(
+    fetchJSON: { path in
+      try await Self.fetchJSONData(path: path)
+    },
+    fetchHTML: { url in
+      try await Self.fetchHTMLData(url: url)
+    }
+  )
+
+  // MARK: - Static implementations (used by .live)
+
+  public static let userAgents: [String] = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.2.20",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
@@ -51,6 +58,10 @@ public struct Fetcher: Sendable {
     "Mozilla/5.0 (iPhone; CPU iPhone OS 11_0_3 like Mac OS X) AppleWebKit/604.1.38 (KHTML, like Gecko) Version/10.1 Mobile/15A432 Safari/602.1",
   ]
 
+  public static func randomUserAgent() -> String {
+    userAgents.randomElement()!
+  }
+
   public static func fetchJSONData(path: String) async throws -> AppleDocJSON {
     let normalizedPath = URLUtilities.normalizeDocumentationPath(path)
     let jsonPath = "documentation/\(normalizedPath)"
@@ -65,7 +76,7 @@ public struct Fetcher: Sendable {
     }
 
     guard let url = URL(string: jsonUrl) else {
-      throw FetchError.invalidURL(jsonUrl)
+      throw AppleDocsError.invalidURL(jsonUrl)
     }
 
     var request = URLRequest(url: url)
@@ -76,17 +87,35 @@ public struct Fetcher: Sendable {
     let (data, response) = try await URLSession.shared.data(for: request)
 
     if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
-      throw FetchError.httpError(statusCode: httpResponse.statusCode, url: jsonUrl)
+      throw AppleDocsError.httpError(statusCode: httpResponse.statusCode, url: jsonUrl)
     }
 
     do {
       return try JSONDecoder().decode(AppleDocJSON.self, from: data)
     } catch {
-      throw FetchError.decodingError(underlying: error.localizedDescription, url: jsonUrl)
+      throw AppleDocsError.decodingError(underlying: error)
     }
   }
 
-  public static func randomUserAgent() -> String {
-    userAgents.randomElement()!
+  public static func fetchHTMLData(url: URL) async throws -> String {
+    var request = URLRequest(url: url)
+    request.setValue(randomUserAgent(), forHTTPHeaderField: "User-Agent")
+
+    let (data, response) = try await URLSession.shared.data(for: request)
+
+    if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
+      throw AppleDocsError.httpError(statusCode: httpResponse.statusCode, url: url.absoluteString)
+    }
+
+    guard let html = String(data: data, encoding: .utf8) else {
+      throw AppleDocsError.decodingError(
+        underlying: NSError(
+          domain: "Fetcher", code: -1,
+          userInfo: [
+            NSLocalizedDescriptionKey: "Could not decode HTML as UTF-8"
+          ]))
+    }
+
+    return html
   }
 }

@@ -1,0 +1,136 @@
+{
+  "metadata": {
+    "role": "article",
+    "title": "Color",
+    "images": [],
+    "availableLocales": ["en"]
+  },
+  "kind": "article",
+  "identifier": {
+    "interfaceLanguage": "swift",
+    "url": "/design/human-interface-guidelines/color"
+  },
+  "hierarchy": {
+    "paths": [["/design/human-interface-guidelines"]]
+  },
+  "sections": [],
+  "primaryContentSections": [
+    {
+      "kind": "content",
+      "content": [
+        {
+          "type": "heading",
+          "text": "Best practices",
+          "level": 2
+        },
+        {
+          "type": "paragraph",
+          "inlineContent": [
+            {
+              "type": "text",
+              "text": "Use color judiciously for communication. The power of color is best realized when used sparingly."
+            }
+          ]
+        },
+        {
+          "type": "aside",
+          "style": "important",
+          "content": [
+            {
+              "type": "paragraph",
+              "inlineContent": [
+                {
+                  "type": "text",
+                  "text": "Don't rely on color alone to differentiate objects or communicate important information."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "unorderedList",
+          "items": [
+            {
+              "content": [
+                {
+                  "type": "paragraph",
+                  "inlineContent": [
+                    {
+                      "type": "text",
+                      "text": "Use system colors when possible."
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "content": [
+                {
+                  "type": "paragraph",
+                  "inlineContent": [
+                    {
+                      "type": "text",
+                      "text": "Test your color choices under different lighting conditions."
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "abstract": [
+    {
+      "type": "text",
+      "text": "Judicious use of color can enhance communication, evoke your brand, provide visual continuity, and communicate status and feedback."
+    }
+  ],
+  "topicSections": [
+    {
+      "title": "Related Topics",
+      "identifiers": [
+        "doc://com.apple.design/documentation/design/human-interface-guidelines/dark-mode",
+        "doc://com.apple.design/documentation/design/human-interface-guidelines/accessibility"
+      ],
+      "anchor": "related"
+    }
+  ],
+  "topicSectionsStyle": "list",
+  "references": {
+    "doc://com.apple.design/documentation/design/human-interface-guidelines/dark-mode": {
+      "kind": "article",
+      "role": "article",
+      "title": "Dark Mode",
+      "url": "/design/human-interface-guidelines/dark-mode",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Dark Mode is a systemwide appearance setting."
+        }
+      ],
+      "identifier": "doc://com.apple.design/documentation/design/human-interface-guidelines/dark-mode",
+      "type": "topic"
+    },
+    "doc://com.apple.design/documentation/design/human-interface-guidelines/accessibility": {
+      "kind": "article",
+      "role": "article",
+      "title": "Accessibility",
+      "url": "/design/human-interface-guidelines/accessibility",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "People use accessibility features to customize how they interact with their devices."
+        }
+      ],
+      "identifier": "doc://com.apple.design/documentation/design/human-interface-guidelines/accessibility",
+      "type": "topic"
+    }
+  },
+  "schemaVersion": {
+    "major": 0,
+    "minor": 3,
+    "patch": 0
+  }
+}

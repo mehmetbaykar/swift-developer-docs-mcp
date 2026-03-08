@@ -69,6 +69,16 @@ public struct ContentItem: Codable, Sendable {
   public let kind: String?
   public let fragments: [FragmentItem]?
   public let conformance: ConformanceInfo?
+  // Table support
+  public let header: String?
+  public let rows: [[[ContentItem]]]?
+  // Image support
+  public let alt: String?
+  public let variants: [ImageVariantRef]?
+  // Additional fields
+  public let destination: String?
+  public let overridingSymbol: String?
+  public let extendedModule: String?
 
   public init(
     text: String? = nil, type: String? = nil, title: String? = nil, name: String? = nil,
@@ -77,7 +87,10 @@ public struct ContentItem: Codable, Sendable {
     level: Int? = nil, style: String? = nil, identifier: String? = nil,
     identifiers: [String]? = nil, url: String? = nil, abstract: [TextFragment]? = nil,
     role: String? = nil, kind: String? = nil, fragments: [FragmentItem]? = nil,
-    conformance: ConformanceInfo? = nil
+    conformance: ConformanceInfo? = nil, header: String? = nil,
+    rows: [[[ContentItem]]]? = nil, alt: String? = nil,
+    variants: [ImageVariantRef]? = nil, destination: String? = nil,
+    overridingSymbol: String? = nil, extendedModule: String? = nil
   ) {
     self.text = text
     self.type = type
@@ -99,6 +112,23 @@ public struct ContentItem: Codable, Sendable {
     self.kind = kind
     self.fragments = fragments
     self.conformance = conformance
+    self.header = header
+    self.rows = rows
+    self.alt = alt
+    self.variants = variants
+    self.destination = destination
+    self.overridingSymbol = overridingSymbol
+    self.extendedModule = extendedModule
+  }
+}
+
+public struct ImageVariantRef: Codable, Sendable {
+  public let url: String
+  public let traits: [String]?
+
+  public init(url: String, traits: [String]? = nil) {
+    self.url = url
+    self.traits = traits
   }
 }
 
@@ -172,15 +202,60 @@ public struct PrimaryContentSection: Codable, Sendable {
   public let content: [ContentItem]?
   public let declarations: [Declaration]?
   public let parameters: [Parameter]?
+  public let items: [PropertyItem]?
 
   public init(
     kind: String, content: [ContentItem]? = nil, declarations: [Declaration]? = nil,
-    parameters: [Parameter]? = nil
+    parameters: [Parameter]? = nil, items: [PropertyItem]? = nil
   ) {
     self.kind = kind
     self.content = content
     self.declarations = declarations
     self.parameters = parameters
+    self.items = items
+  }
+}
+
+// MARK: - Property Item (data dictionary pages)
+
+public struct PropertyItem: Codable, Sendable {
+  public let name: String
+  public let required: Bool?
+  public let content: [ContentItem]?
+  public let type: [PropertyTypeItem]?
+  public let attributes: [PropertyAttribute]?
+
+  public init(
+    name: String, required: Bool? = nil, content: [ContentItem]? = nil,
+    type: [PropertyTypeItem]? = nil, attributes: [PropertyAttribute]? = nil
+  ) {
+    self.name = name
+    self.required = required
+    self.content = content
+    self.type = type
+    self.attributes = attributes
+  }
+}
+
+public struct PropertyTypeItem: Codable, Sendable {
+  public let text: String?
+  public let kind: String?
+  public let identifier: String?
+
+  public init(text: String? = nil, kind: String? = nil, identifier: String? = nil) {
+    self.text = text
+    self.kind = kind
+    self.identifier = identifier
+  }
+}
+
+public struct PropertyAttribute: Codable, Sendable {
+  public let kind: String?
+  public let values: [String]?
+
+  public init(kind: String? = nil, values: [String]? = nil) {
+    self.kind = kind
+    self.values = values
   }
 }
 
@@ -239,6 +314,20 @@ public struct DocumentationIdentifier: Codable, Sendable {
   public let interfaceLanguage: String?
 }
 
+// MARK: - External Origin
+
+public struct ExternalOrigin: Codable, Sendable {
+  public let url: String
+  public let title: String
+
+  public init(url: String, title: String) {
+    self.url = url
+    self.title = title
+  }
+}
+
+// MARK: - Apple Documentation JSON
+
 public struct AppleDocJSON: Codable, Sendable {
   public let metadata: DocumentationMetadata?
   public let kind: String?
@@ -248,18 +337,20 @@ public struct AppleDocJSON: Codable, Sendable {
   public let primaryContentSections: [PrimaryContentSection]?
   public let topicSections: [TopicSection]?
   public let seeAlsoSections: [SeeAlsoSection]?
-  public let variants: [ContentItem]?
+  public let variants: [Variant]?
   public let relationshipsSections: [ContentItem]?
   public let references: [String: ContentItem]?
   public let interfaceLanguages: InterfaceLanguages?
+  public let externalOrigin: ExternalOrigin?
 
   public init(
     metadata: DocumentationMetadata? = nil, kind: String? = nil,
     identifier: DocumentationIdentifier? = nil, abstract: [TextFragment]? = nil,
     sections: [ContentItem]? = nil, primaryContentSections: [PrimaryContentSection]? = nil,
     topicSections: [TopicSection]? = nil, seeAlsoSections: [SeeAlsoSection]? = nil,
-    variants: [ContentItem]? = nil, relationshipsSections: [ContentItem]? = nil,
-    references: [String: ContentItem]? = nil, interfaceLanguages: InterfaceLanguages? = nil
+    variants: [Variant]? = nil, relationshipsSections: [ContentItem]? = nil,
+    references: [String: ContentItem]? = nil, interfaceLanguages: InterfaceLanguages? = nil,
+    externalOrigin: ExternalOrigin? = nil
   ) {
     self.metadata = metadata
     self.kind = kind
@@ -273,5 +364,6 @@ public struct AppleDocJSON: Codable, Sendable {
     self.relationshipsSections = relationshipsSections
     self.references = references
     self.interfaceLanguages = interfaceLanguages
+    self.externalOrigin = externalOrigin
   }
 }
