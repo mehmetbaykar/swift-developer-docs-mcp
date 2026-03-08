@@ -1,0 +1,86 @@
+{
+  "metadata": {
+    "title": "ExampleType",
+    "roleHeading": "Structure",
+    "platforms": [
+      {
+        "name": "iOS",
+        "introducedAt": "15.0"
+      },
+      {
+        "name": "macOS",
+        "introducedAt": "12.0"
+      }
+    ]
+  },
+  "identifier": {
+    "url": "doc://com.example.TestLib/documentation/TestLib/ExampleType",
+    "interfaceLanguage": "swift"
+  },
+  "abstract": [
+    {
+      "text": "A type that demonstrates external documentation rendering.",
+      "type": "text"
+    }
+  ],
+  "primaryContentSections": [
+    {
+      "kind": "declarations",
+      "declarations": [
+        {
+          "tokens": [
+            { "text": "struct", "kind": "keyword" },
+            { "text": " ", "kind": "text" },
+            { "text": "ExampleType", "kind": "identifier" }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "content",
+      "content": [
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "Overview"
+        },
+        {
+          "type": "paragraph",
+          "inlineContent": [
+            {
+              "type": "text",
+              "text": "This type provides example functionality. See "
+            },
+            {
+              "type": "reference",
+              "title": "RelatedType",
+              "identifier": "doc://com.example.TestLib/documentation/TestLib/RelatedType"
+            },
+            {
+              "type": "text",
+              "text": " for related information."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "topicSections": [
+    {
+      "title": "Creating an Instance",
+      "identifiers": [
+        "doc://com.example.TestLib/documentation/TestLib/ExampleType/init()"
+      ]
+    }
+  ],
+  "references": {
+    "doc://com.example.TestLib/documentation/TestLib/RelatedType": {
+      "title": "RelatedType",
+      "url": "/documentation/TestLib/RelatedType"
+    },
+    "doc://com.example.TestLib/documentation/TestLib/ExampleType/init()": {
+      "title": "init()",
+      "url": "/documentation/TestLib/ExampleType/init()"
+    }
+  }
+}
