@@ -100,62 +100,66 @@ struct RobotsPolicyTests {
 
   @Suite("Fetch Robots Policy")
   struct FetchPolicy {
-    @Test("Returns not-found for 404 response")
-    func notFound404() async {
-      let policy = await RobotsPolicy.fetchRobotsPolicy(
-        origin: "https://example.com",
-        userAgent: "test-bot"
-      ) { _ in
-        let response = HTTPURLResponse(
-          url: URL(string: "https://example.com/robots.txt")!,
-          statusCode: 404, httpVersion: nil, headerFields: nil)!
-        return (Data(), response)
+    // HTTPURLResponse cannot be constructed on Linux (FoundationNetworking aliases it to AnyObject),
+    // so tests using HTTPURLResponse are conditionally compiled for Apple platforms only.
+    #if !canImport(FoundationNetworking)
+      @Test("Returns not-found for 404 response")
+      func notFound404() async {
+        let policy = await RobotsPolicy.fetchRobotsPolicy(
+          origin: "https://example.com",
+          userAgent: "test-bot"
+        ) { _ in
+          let response = HTTPURLResponse(
+            url: URL(string: "https://example.com/robots.txt")!,
+            statusCode: 404, httpVersion: nil, headerFields: nil)!
+          return (Data(), response)
+        }
+        #expect(policy == .notFound)
       }
-      #expect(policy == .notFound)
-    }
 
-    @Test("Returns deny-all for 401 response")
-    func denyAll401() async {
-      let policy = await RobotsPolicy.fetchRobotsPolicy(
-        origin: "https://example.com",
-        userAgent: "test-bot"
-      ) { _ in
-        let response = HTTPURLResponse(
-          url: URL(string: "https://example.com/robots.txt")!,
-          statusCode: 401, httpVersion: nil, headerFields: nil)!
-        return (Data(), response)
+      @Test("Returns deny-all for 401 response")
+      func denyAll401() async {
+        let policy = await RobotsPolicy.fetchRobotsPolicy(
+          origin: "https://example.com",
+          userAgent: "test-bot"
+        ) { _ in
+          let response = HTTPURLResponse(
+            url: URL(string: "https://example.com/robots.txt")!,
+            statusCode: 401, httpVersion: nil, headerFields: nil)!
+          return (Data(), response)
+        }
+        #expect(policy == .denyAll)
       }
-      #expect(policy == .denyAll)
-    }
 
-    @Test("Returns allow-all for 500 response")
-    func allowAll500() async {
-      let policy = await RobotsPolicy.fetchRobotsPolicy(
-        origin: "https://example.com",
-        userAgent: "test-bot"
-      ) { _ in
-        let response = HTTPURLResponse(
-          url: URL(string: "https://example.com/robots.txt")!,
-          statusCode: 500, httpVersion: nil, headerFields: nil)!
-        return (Data(), response)
+      @Test("Returns allow-all for 500 response")
+      func allowAll500() async {
+        let policy = await RobotsPolicy.fetchRobotsPolicy(
+          origin: "https://example.com",
+          userAgent: "test-bot"
+        ) { _ in
+          let response = HTTPURLResponse(
+            url: URL(string: "https://example.com/robots.txt")!,
+            statusCode: 500, httpVersion: nil, headerFields: nil)!
+          return (Data(), response)
+        }
+        #expect(policy == .allowAll)
       }
-      #expect(policy == .allowAll)
-    }
 
-    @Test("Returns rules for 200 response")
-    func rules200() async {
-      let robotsText = "User-agent: *\nDisallow: /private/"
-      let policy = await RobotsPolicy.fetchRobotsPolicy(
-        origin: "https://example.com",
-        userAgent: "test-bot"
-      ) { _ in
-        let response = HTTPURLResponse(
-          url: URL(string: "https://example.com/robots.txt")!,
-          statusCode: 200, httpVersion: nil, headerFields: nil)!
-        return (robotsText.data(using: .utf8)!, response)
+      @Test("Returns rules for 200 response")
+      func rules200() async {
+        let robotsText = "User-agent: *\nDisallow: /private/"
+        let policy = await RobotsPolicy.fetchRobotsPolicy(
+          origin: "https://example.com",
+          userAgent: "test-bot"
+        ) { _ in
+          let response = HTTPURLResponse(
+            url: URL(string: "https://example.com/robots.txt")!,
+            statusCode: 200, httpVersion: nil, headerFields: nil)!
+          return (robotsText.data(using: .utf8)!, response)
+        }
+        #expect(policy == .rules(robotsText))
       }
-      #expect(policy == .rules(robotsText))
-    }
+    #endif
 
     @Test("Returns allow-all on network error")
     func networkError() async {
