@@ -4,48 +4,127 @@
 
 The project has two targets:
 
-- **AppleDocsCore** — a pure Swift library with no MCP dependencies. Handles fetching, parsing, rendering, and shared action logic.
-- **swift-developer-docs-mcp** — an executable that provides both a CLI interface and an MCP server, both backed by the same core library.
+- **AppleDocsCore** — a pure Swift library with no MCP dependencies. Handles fetching, parsing, rendering, and shared action logic for reference docs, HIG, video transcripts, and external documentation.
+- **swift-developer-docs-mcp** — an executable that provides a CLI interface, an MCP server, and an HTTP server (Hummingbird), all backed by the same core library.
 
 ```
-┌─────────────────────────────────┐    ┌──────────────────────┐
-│    Claude Desktop / MCP Client  │    │    CLI / Shell        │
-└──────────────┬──────────────────┘    └──────────┬───────────┘
-               │ stdio (JSON-RPC)                 │ subcommands
-┌──────────────▼──────────────────────────────────▼───────────┐
-│                  swift-developer-docs-mcp                   │
-│                                                             │
-│   ┌───────────┐ ┌────────────┐   ┌───────────┐ ┌────────┐  │
-│   │SearchTool │ │ FetchTool  │   │SearchCmd  │ │FetchCmd│  │
-│   └─────┬─────┘ └─────┬──────┘   └─────┬─────┘ └───┬────┘  │
-│         │              │                │            │       │
-│         │         MCP Tools          Commands        │       │
-│         │     (FastMCP wrappers)  (CLICommand)       │       │
-└─────────┼──────────────┼────────────────┼────────────┼──────┘
-          │              │                │            │
-┌─────────▼──────────────▼────────────────▼────────────▼──────┐
-│                     AppleDocsCore                           │
-│                                                             │
-│   ┌──────────────────────────────────────────────────────┐  │
-│   │              AppleDocsActions                        │  │
-│   │  .search(query:) → SearchOutput                     │  │
-│   │  .fetch(path:)   → String (markdown)                │  │
-│   └───────────┬──────────────────────┬───────────────────┘  │
-│               │                      │                      │
-│   ┌───────────▼──────┐    ┌─────────▼──────────────────┐   │
-│   │    Search        │    │   Fetcher → Renderer       │   │
-│   │ (HTML parsing)   │    │ (JSON fetch → Markdown)    │   │
-│   └──────────────────┘    └────────────────────────────┘   │
-│                                                             │
-│   ┌─────────────────────────────────────────────────────┐   │
-│   │           Types / URLUtilities                      │   │
-│   └─────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────┐  ┌──────────────┐  ┌──────────────┐
+│  Claude Desktop / MCP Client│  │  CLI / Shell  │  │ HTTP Clients │
+└──────────────┬──────────────┘  └──────┬───────┘  └──────┬───────┘
+               │ stdio (JSON-RPC)       │ subcommands     │ REST
+┌──────────────▼────────────────────────▼─────────────────▼───────┐
+│                    swift-developer-docs-mcp                     │
+│                                                                 │
+│  ┌─────────────────────┐  ┌─────────────────┐  ┌────────────┐  │
+│  │     MCP Tools (4)   │  │  Commands (6)   │  │ HTTP Server│  │
+│  │ SearchAppleDocs     │  │ search          │  │ Hummingbird│  │
+│  │ FetchAppleDocs      │  │ fetch           │  │ /docs/*    │  │
+│  │ FetchExternalDoc    │  │ hig             │  │ /search    │  │
+│  │ FetchVideoTranscript│  │ video           │  │ /hig/*     │  │
+│  └─────────┬───────────┘  │ external        │  │ /videos/*  │  │
+│            │              │ serve           │  │ /external/*│  │
+│            │              └────────┬────────┘  └─────┬──────┘  │
+│            │                       │                  │         │
+│  ┌─────────▼───────────────────────▼──────────────────▼──────┐  │
+│  │              Middleware Stack                              │  │
+│  │  TrailingSlash → SecurityHeaders → CORS                   │  │
+│  └───────────────────────────────────────────────────────────┘  │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │
+┌────────────────────────────────▼────────────────────────────────┐
+│                        AppleDocsCore                            │
+│                                                                 │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │              AppleDocsClient (injectable struct)          │   │
+│  │  .fetch(path:)          → String (markdown)              │   │
+│  │  .search(query:)        → SearchOutput                   │   │
+│  │  .fetchHIG(path:)       → String (markdown)              │   │
+│  │  .fetchHIGTableOfContents() → String (markdown)          │   │
+│  │  .fetchVideo(path:)     → String (markdown)              │   │
+│  │  .fetchExternal(url:)   → String (markdown)              │   │
+│  │  .unifiedFetch(input:)  → String (auto-routes by path)   │   │
+│  └────────┬──────────┬──────────┬──────────┬────────────────┘   │
+│           │          │          │          │                     │
+│  ┌────────▼───┐ ┌────▼────┐ ┌──▼───┐ ┌───▼──────────────────┐  │
+│  │ Reference  │ │  Search │ │ HIG  │ │ Video │ External     │  │
+│  │            │ │         │ │      │ │       │              │  │
+│  │ Renderer   │ │ Parser  │ │Fetch │ │Trans- │ Policy       │  │
+│  │ Fetcher    │ │ Client  │ │Render│ │cript  │ Robots       │  │
+│  │            │ │ Types   │ │Resolv│ │       │ Fetcher      │  │
+│  └────────────┘ └─────────┘ │Types │ │       │ Renderer     │  │
+│                              └──────┘ └───────┴──────────────┘  │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │                    Shared                                │   │
+│  │  Types, Fetcher, ContentRenderer, RenderingContext,      │   │
+│  │  RenderConfig, AppleDocsError, VariantTypes, URLUtils    │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Project Structure
+
+```
+Sources/AppleDocsCore/
+├── Shared/
+│   ├── Types.swift              — Codable types (ContentItem, AppleDocJSON, etc.)
+│   ├── AppleDocsError.swift     — Unified error enum (10 cases)
+│   ├── VariantTypes.swift       — LanguageVariant, ImageVariant, SymbolVariant
+│   ├── Fetcher.swift            — Injectable HTTP client with UA rotation
+│   ├── ContentRenderer.swift    — Shared rendering (inline, blocks, tables, asides)
+│   ├── RenderingContext.swift   — Injectable rendering closures
+│   ├── RenderConfig.swift       — Rendering state (basePath, isExternal, etc.)
+│   └── URLUtilities.swift       — Path normalization, URL generation
+├── Reference/
+│   ├── ReferenceRenderer.swift  — Reference doc → Markdown
+│   └── ReferenceFetcher.swift   — Injectable reference doc fetching
+├── Search/
+│   ├── SearchParser.swift       — SwiftSoup HTML parsing
+│   ├── SearchClient.swift       — Injectable search struct
+│   └── SearchTypes.swift        — SearchResult, SearchOptions
+├── HIG/
+│   ├── HIGTypes.swift           — HIGPageJSON, HIGTableOfContents, etc.
+│   ├── HIGFetcher.swift         — ToC fetch, page fetch, path extraction
+│   ├── HIGRenderer.swift        — HIG page + ToC Markdown rendering
+│   └── HIGPathResolver.swift    — Moved-topic path resolution
+├── Video/
+│   └── VideoTranscript.swift    — HTML fetch, transcript extraction, MM:SS
+├── External/
+│   ├── ExternalPolicy.swift     — SSRF protection (IP blocking, allowlist/blocklist)
+│   ├── RobotsPolicy.swift       — robots.txt caching, X-Robots-Tag
+│   ├── ExternalFetcher.swift    — External DocC JSON fetching
+│   └── ExternalRenderer.swift   — External doc rendering with path rewriting
+└── AppleDocsClient.swift        — Injectable actions struct with unified routing
+
+Sources/swift-developer-docs-mcp/
+├── Main.swift                   — Entry point: CLI → MCP → serve
+├── Commands/
+│   ├── CLICommand.swift         — Protocol definition
+│   ├── CLIRouter.swift          — Subcommand dispatch
+│   ├── CLIArgParser.swift       — --json flag parsing
+│   ├── SearchCommand.swift      — search <query>
+│   ├── FetchCommand.swift       — fetch <path-or-url>
+│   ├── HIGCommand.swift         — hig [path]
+│   ├── VideoCommand.swift       — video <path>
+│   ├── ExternalCommand.swift    — external <url>
+│   └── ServeCommand.swift       — serve [--port N]
+├── Tools/
+│   ├── SearchTool.swift         — searchAppleDocumentation
+│   ├── FetchDocumentationTool.swift — fetchAppleDocumentation
+│   ├── FetchExternalDocTool.swift   — fetchExternalDocumentation
+│   └── FetchVideoTranscriptTool.swift — fetchAppleVideoTranscript
+├── Server/
+│   ├── ServerApp.swift          — Hummingbird routes + llms.txt
+│   ├── SecurityHeadersMiddleware.swift
+│   ├── CORSMiddleware.swift
+│   └── TrailingSlashMiddleware.swift
+└── Resources/
+    ├── DocumentationResource.swift
+    └── llms.txt
 ```
 
 ## Entry Point
 
-`Main.swift` creates a `CLIRouter` and checks for subcommands. If a subcommand matches (`search`, `fetch`, `help`), it runs in CLI mode and exits. Otherwise, it starts the MCP server.
+`Main.swift` creates a `CLIRouter` and checks for subcommands. If a subcommand matches, it runs in CLI mode and exits. Otherwise, it starts the MCP server on stdio.
 
 ```
 args present? ──yes──▶ CLIRouter ──▶ matched command ──▶ run & exit
@@ -56,107 +135,141 @@ args present? ──yes──▶ CLIRouter ──▶ matched command ──▶ r
   FastMCP server (stdio)
 ```
 
+The `serve` command starts a Hummingbird HTTP server instead of the MCP server.
+
+## Injectable Dependency Pattern
+
+All core components use an injectable struct pattern (inspired by swift-dependencies, without the library):
+
+```swift
+struct Fetcher: Sendable {
+    var fetchJSON: @Sendable (URL) async throws -> Data
+    var fetchHTML: @Sendable (URL) async throws -> String
+}
+extension Fetcher {
+    static let live = Fetcher(fetchJSON: { ... }, fetchHTML: { ... })
+}
+```
+
+This pattern is used by: `Fetcher`, `RenderingContext`, `SearchClient`, `ReferenceFetcher`, and `AppleDocsClient`. Tests use mock implementations injected via the same closures.
+
 ## Shared Action Layer
 
-`AppleDocsActions` is the single source of truth for search and fetch logic. Both MCP tools and CLI commands delegate to it:
+`AppleDocsClient` is the injectable actions struct with a `.live` static that delegates to `AppleDocsActions`. It provides:
 
-- `AppleDocsActions.search(query:)` — calls `AppleDocsSearcher.search()`, formats results, encodes JSON
-- `AppleDocsActions.fetch(path:)` — normalizes path, fetches JSON, renders Markdown, validates content length
+- `fetch(path:)` — Reference documentation
+- `search(query:)` — Search with formatted + JSON output
+- `fetchHIG(path:)` — HIG page with path resolution for moved topics
+- `fetchHIGTableOfContents()` — Full HIG table of contents
+- `fetchVideo(path:)` — WWDC video transcript extraction
+- `fetchExternal(url:)` — External DocC documentation with SSRF protection
+- `unifiedFetch(input:)` — Auto-routes based on path pattern
 
-This eliminates duplication between the CLI and MCP interfaces. Adding a new interface (e.g., HTTP server) only requires writing thin wrappers around `AppleDocsActions`.
+`unifiedFetch` detects the content type from the path:
+- `design/human-interface-guidelines/*` → HIG
+- `videos/play/*` → Video transcript
+- `external/*` → External documentation
+- Everything else → Reference documentation
 
 ## CLI Layer
 
-The CLI uses a simple protocol-based design:
+The CLI uses a protocol-based design with 6 commands:
 
-- **`CLICommand`** — protocol with `name`, `usage`, and `run(arguments:)`
-- **`CLIRouter`** — takes an array of commands, matches the first argument, dispatches
-- **`SearchCommand`** / **`FetchCommand`** — thin wrappers that call `AppleDocsActions` and print to stdout
+| Command | Description |
+|---------|-------------|
+| `search <query>` | Search Apple Developer documentation |
+| `fetch <path-or-url>` | Fetch any doc type (auto-routes) |
+| `hig [path]` | Fetch HIG pages (no path = table of contents) |
+| `video <path>` | Fetch WWDC video transcripts |
+| `external <url>` | Fetch external Swift-DocC documentation |
+| `serve [--port N]` | Start HTTP server (default: 8080) |
 
-New CLI commands are added by conforming to `CLICommand` and registering in `CLIRouter`'s default array.
+All commands support `--json` for JSON output.
+
+## MCP Tools
+
+4 MCP tools registered via FastMCP:
+
+| Tool | Input | Description |
+|------|-------|-------------|
+| `searchAppleDocumentation` | `query: String` | Search with formatted + JSON output |
+| `fetchAppleDocumentation` | `path: String` | Fetch reference docs or HIG |
+| `fetchExternalDocumentation` | `url: String` | Fetch external DocC with SSRF protection |
+| `fetchAppleVideoTranscript` | `path: String` | Fetch video transcripts |
+
+All tools declare: `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: true`.
+
+## HTTP Server
+
+Hummingbird-based HTTP server with these routes:
+
+| Route | Description |
+|-------|-------------|
+| `GET /` | llms.txt content |
+| `GET /llms.txt` | llms.txt content |
+| `GET /search?q=...` | Search with content negotiation |
+| `GET /documentation/{path+}` | Reference documentation |
+| `GET /design/human-interface-guidelines` | HIG table of contents |
+| `GET /design/human-interface-guidelines/{path+}` | HIG pages |
+| `GET /videos/play/{collection}/{id}` | Video transcripts |
+| `GET /external/{path+}` | External documentation |
+| `GET /{path+}` | Catch-all 404 handler |
+
+Middleware stack: TrailingSlashMiddleware → SecurityHeadersMiddleware → CORSMiddleware
+
+Content negotiation: `Accept: application/json` returns JSON, otherwise Markdown. Responses include `ETag`, `Cache-Control`, and `Content-Location` headers.
 
 ## Core Library Modules
 
-### Types.swift
+### Shared/Types.swift
+All Codable & Sendable types mapping to Apple's documentation JSON API. Root type is `AppleDocJSON`. Key types: `ContentItem` (flexible union), `CodeValue` (string or array), `TextFragment`, `PropertyItem`, `FragmentItem`, `ConformanceInfo`, `ExternalOrigin`.
 
-All Codable & Sendable types that map to Apple's documentation JSON API. The root type is `AppleDocJSON` which contains metadata, content sections, topic sections, references, and more.
+### Shared/ContentRenderer.swift
+Shared rendering engine used by both ReferenceRenderer and ExternalRenderer:
+- `renderInlineContent` — text, codeVoice, reference, emphasis, strong, image, superscript, subscript, strikethrough, newTerm
+- `renderContentArray` — heading, paragraph, codeListing, lists, aside, table, row/column layout
+- `renderTable`, `renderAside`, `renderImage`, `renderProperties`, `renderRelationships`
+- Depth-limited (max 10) to prevent stack overflow on malformed data
 
-Key design decisions:
-- `ContentItem` is a flexible union type with many optional fields, used across content arrays, references, relationships, and variants
-- `CodeValue` is an enum handling the JSON ambiguity where code can be either a single string or an array of strings
-- `TextFragment` has optional `text` and recursive `inlineContent` to handle emphasis/strong fragments in abstracts
+### HIG Module
+Full Human Interface Guidelines support:
+- ToC fetch from Apple's index API
+- Page rendering with breadcrumbs, front matter, content sections
+- Path resolution for moved/renamed topics (leaf slug matching)
 
-### URLUtilities.swift
+### Video Module
+WWDC video transcript extraction:
+- HTML fetch from developer.apple.com/videos/play/
+- SwiftSoup parsing of `span[data-start]` elements
+- MM:SS timestamp formatting
 
-Three static functions for path handling:
-- `normalizeDocumentationPath` — strips leading slashes, `documentation/` prefix, and whitespace
-- `generateAppleDocURL` — builds the full `https://developer.apple.com/documentation/` URL
-- `isValidAppleDocURL` — validates a URL points to Apple's docs
-
-### Fetcher.swift
-
-Fetches Apple's JSON data API. The key insight is that Apple's documentation pages are JavaScript-rendered, but the underlying data is available at predictable JSON endpoints:
-
-- Framework index: `https://developer.apple.com/tutorials/data/index/{framework}`
-- Documentation page: `https://developer.apple.com/tutorials/data/documentation/{path}.json`
-
-The fetcher rotates through 26 Safari user-agent strings to avoid detection.
-
-### Search.swift
-
-Fetches Apple's search page HTML and parses it with SwiftSoup. Extracts:
-- Result title and URL from `a.click-analytics-result` elements
-- Description from `p.result-description`
-- Breadcrumbs from `li.breadcrumb-list-item`
-- Tags from `li.result-tag`
-- Result type (documentation/general/other) from CSS classes
-
-### Renderer.swift
-
-The largest module. Converts `AppleDocJSON` into Markdown with:
-
-1. **Front matter** — YAML block with title, description, source URL, timestamp
-2. **Breadcrumbs** — Navigation path links
-3. **Metadata** — Role heading, title, platform availability
-4. **Abstract** — Blockquote summary
-5. **Declarations** — Swift code blocks from token arrays
-6. **Parameters** — Formatted parameter list
-7. **Content sections** — Recursive rendering of headings, paragraphs, code listings, lists, asides
-8. **Relationships** — Conformances, inheritance
-9. **Topics** — Grouped API members with abstracts
-10. **Index content** — Framework-level member listings
-11. **See also** — Related documentation links
-12. **Footer** — Attribution
-
-Recursion is depth-limited (content: 50, inline: 20) to prevent stack overflow on malformed data.
-
-### Actions.swift
-
-Shared action layer that both MCP tools and CLI commands call:
-
-- `search(query:)` returns `SearchOutput` with formatted text and JSON string
-- `fetch(path:)` returns rendered Markdown string
-- `FetchError` provides typed errors for invalid paths and insufficient content
-
-## MCP Layer
-
-### SearchTool
-
-Wraps `AppleDocsActions.search()`. Returns both formatted text and JSON as separate `ToolContentItem` entries.
-
-### FetchTool
-
-Wraps `AppleDocsActions.fetch()`. Returns the rendered Markdown as a single `ToolContentItem`.
-
-### Both tools declare MCP annotations:
-- `readOnlyHint: true` — no side effects
-- `destructiveHint: false` — no mutations
-- `idempotentHint: true` — same input = same output
-- `openWorldHint: true` — accesses external Apple servers
+### External Module
+External Swift-DocC documentation with full SSRF protection:
+- URL validation (HTTPS-only, no credentials/fragments)
+- Private IP blocking (IPv4: 10.x, 127.x, 172.16-31.x, 192.168.x; IPv6: ::1, fc00::/7, fe80::/10)
+- Host allowlist/blocklist via environment variables
+- robots.txt caching (5-min TTL, 1000 max entries, in-flight deduplication)
+- X-Robots-Tag header inspection (none, noindex, noai, noimageai)
+- doc:// identifier rewriting for external URLs
 
 ## Dependencies
 
 | Package | Purpose |
 |---------|---------|
 | [swift-fast-mcp](https://github.com/mehmetbaykar/swift-fast-mcp) | MCP server framework (stdio transport, tool/resource registration) |
-| [SwiftSoup](https://github.com/scinfu/SwiftSoup) | HTML parsing for search results |
+| [SwiftSoup](https://github.com/scinfu/SwiftSoup) | HTML parsing for search results, video transcripts, robots.txt |
+| [Hummingbird](https://github.com/hummingbird-project/hummingbird) | HTTP server framework |
+
+## Test Coverage
+
+395 tests in 105 suites covering:
+- Reference rendering (smoke tests, snapshot tests, content renderer tests)
+- Search parsing (HTML fixture-based tests)
+- HIG (fetcher, renderer, path resolver, types codability)
+- Video transcripts (path parsing, title extraction, timestamp formatting)
+- External docs (SSRF policy, robots.txt caching, fetcher, renderer)
+- Client routing (endpoint resolution, unified fetch dispatch)
+- Error handling (error types, discrimination, edge cases)
+- Concurrency (TaskGroup, Sendable verification)
+- User agent rotation (diversity, format validation)
+- Integration tests (opt-in real API calls via INTEGRATION_TESTS=1)

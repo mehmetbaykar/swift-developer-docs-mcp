@@ -10,12 +10,15 @@ If you found this helpful, you can support more open source work!
 
 A tool that makes Apple Developer Documentation readable by AI tools and humans alike. Apple's docs are JavaScript-rendered and invisible to LLMs — this tool fetches the underlying JSON data and converts it to clean, structured Markdown with declarations, parameters, platform availability, topic sections, relationships, code examples, and see-also links.
 
+Supports **reference docs**, **Human Interface Guidelines**, **WWDC video transcripts**, and **external Swift-DocC sites** — all with full SSRF protection.
+
 Use it however you prefer:
 
 | Mode | Best for |
 |------|----------|
 | **CLI** | Direct terminal use, scripting, piping output |
 | **MCP Server** | Claude Code MCP integration (auto-available tools) |
+| **HTTP Server** | REST API for web clients and integrations |
 | **Claude Code Skill** | Claude Code — just type `/apple-docs SwiftUI View` |
 
 ## Installation
@@ -61,16 +64,32 @@ npx @mehmetbaykar/swift-developer-docs-mcp search "SwiftUI View"
 # Fetch a specific documentation page as Markdown
 npx @mehmetbaykar/swift-developer-docs-mcp fetch swift/array
 
+# Fetch Human Interface Guidelines
+npx @mehmetbaykar/swift-developer-docs-mcp hig foundations/color
+
+# Fetch a WWDC video transcript
+npx @mehmetbaykar/swift-developer-docs-mcp video videos/play/wwdc2024/10133
+
+# Fetch external Swift-DocC documentation
+npx @mehmetbaykar/swift-developer-docs-mcp external https://apple.github.io/swift-argument-parser/documentation/argumentparser
+
+# Start the HTTP server
+npx @mehmetbaykar/swift-developer-docs-mcp serve --port 8080
+
 # Show available commands
 npx @mehmetbaykar/swift-developer-docs-mcp help
 ```
 
-Two commands, that's it:
-
 | Command | Description |
 |---------|-------------|
 | `search <query>` | Search Apple Developer docs by keyword. Returns titles, URLs, descriptions, breadcrumbs, and tags. |
-| `fetch <path>` | Fetch a doc page by path (e.g. `swift/array`, `swiftui/view`) and return rendered Markdown. |
+| `fetch <path-or-url>` | Fetch any doc type — auto-routes based on path (reference docs, HIG, video, external). |
+| `hig [path]` | Fetch Human Interface Guidelines. No path = table of contents. |
+| `video <path>` | Fetch WWDC video transcript (e.g., `videos/play/wwdc2024/10133`). |
+| `external <url>` | Fetch external Swift-DocC documentation by URL. |
+| `serve [--port N]` | Start HTTP server (default: port 8080). |
+
+All commands support `--json` for JSON output.
 
 <details>
 <summary>Using a local build</summary>
@@ -78,6 +97,9 @@ Two commands, that's it:
 ```bash
 .build/debug/swift-developer-docs-mcp search "SwiftUI View"
 .build/debug/swift-developer-docs-mcp fetch swift/array
+.build/debug/swift-developer-docs-mcp hig foundations/color
+.build/debug/swift-developer-docs-mcp video videos/play/wwdc2024/10133
+.build/debug/swift-developer-docs-mcp serve
 ```
 
 </details>
@@ -159,9 +181,31 @@ The fetch output includes the full documentation: overview with Swift code examp
 
 ---
 
+### HTTP Server
+
+Start a REST API server for web clients and integrations:
+
+```bash
+npx @mehmetbaykar/swift-developer-docs-mcp serve --port 8080
+```
+
+| Route | Description |
+|-------|-------------|
+| `GET /` | llms.txt — service description |
+| `GET /search?q=...` | Search documentation |
+| `GET /documentation/{path}` | Reference documentation |
+| `GET /design/human-interface-guidelines` | HIG table of contents |
+| `GET /design/human-interface-guidelines/{path}` | HIG pages |
+| `GET /videos/play/{collection}/{id}` | Video transcripts |
+| `GET /external/{host}/{path}` | External DocC documentation |
+
+All endpoints return `text/markdown` by default. Set `Accept: application/json` for JSON. Responses include `ETag`, `Cache-Control`, and `Content-Location` headers.
+
+---
+
 ### MCP Server (Claude Code)
 
-Add it as an MCP server in Claude Code and two tools become available automatically — `searchAppleDocumentation` and `fetchAppleDocumentation`:
+Add it as an MCP server in Claude Code and four tools become available automatically — `searchAppleDocumentation`, `fetchAppleDocumentation`, `fetchExternalDocumentation`, and `fetchAppleVideoTranscript`:
 
 ```bash
 claude mcp add apple-docs -- npx -y @mehmetbaykar/swift-developer-docs-mcp
@@ -206,6 +250,9 @@ Claude can then use the MCP tools directly when you ask things like:
 - "Search for SwiftUI View documentation"
 - "Fetch the docs for swift/array"
 - "Show me the documentation for combine/publisher"
+- "Fetch the HIG page for color"
+- "Get the WWDC 2024 video transcript for session 10133"
+- "Fetch the swift-argument-parser documentation"
 
 ---
 
@@ -249,25 +296,64 @@ The skill also activates automatically when Claude detects questions about Apple
 
 ```
 Sources/
-  AppleDocsCore/              # Core library (no MCP dependency)
-    Types.swift               # Codable types for Apple's JSON API
-    URLUtilities.swift        # Path normalization and URL generation
-    Fetcher.swift             # HTTP fetching with user-agent rotation
-    Search.swift              # HTML search result parsing (SwiftSoup)
-    Renderer.swift            # JSON-to-Markdown rendering engine
-    Actions.swift             # Shared search/fetch logic (single source of truth)
-  swift-developer-docs-mcp/   # Executable (CLI + MCP server)
-    Main.swift                # Entry point, routes CLI vs MCP server
-    Commands/                 # CLI subcommands
-      CLICommand.swift        # Command protocol
-      CLIRouter.swift         # Argument routing
-      SearchCommand.swift     # `search` subcommand
-      FetchCommand.swift      # `fetch` subcommand
-    Tools/                    # MCP tool definitions
-    Resources/                # MCP resource definitions
+  AppleDocsCore/                # Core library (no MCP dependency)
+    Shared/
+      Types.swift               # Codable types (ContentItem, AppleDocJSON, etc.)
+      AppleDocsError.swift      # Unified error enum (10 cases)
+      VariantTypes.swift        # LanguageVariant, ImageVariant, SymbolVariant
+      Fetcher.swift             # Injectable HTTP client with UA rotation
+      ContentRenderer.swift     # Shared rendering (inline, blocks, tables, asides)
+      RenderingContext.swift    # Injectable rendering closures
+      RenderConfig.swift        # Rendering state (basePath, isExternal, etc.)
+      URLUtilities.swift        # Path normalization, URL generation
+    Reference/
+      ReferenceRenderer.swift   # Reference doc → Markdown
+      ReferenceFetcher.swift    # Injectable reference doc fetching
+    Search/
+      SearchParser.swift        # SwiftSoup HTML parsing
+      SearchClient.swift        # Injectable search struct
+      SearchTypes.swift         # SearchResult, SearchOptions
+    HIG/
+      HIGTypes.swift            # HIGPageJSON, HIGTableOfContents, etc.
+      HIGFetcher.swift          # ToC + page data fetching
+      HIGRenderer.swift         # HIG Markdown rendering
+      HIGPathResolver.swift     # Moved-topic path resolution
+    Video/
+      VideoTranscript.swift     # HTML fetch, transcript extraction, MM:SS timestamps
+    External/
+      ExternalPolicy.swift      # SSRF protection (IP blocking, allowlist/blocklist)
+      RobotsPolicy.swift        # robots.txt caching, X-Robots-Tag
+      ExternalFetcher.swift     # External DocC JSON fetching
+      ExternalRenderer.swift    # External doc rendering with path rewriting
+    AppleDocsClient.swift       # Injectable actions struct with unified routing
+  swift-developer-docs-mcp/     # Executable (CLI + MCP + HTTP server)
+    Main.swift                  # Entry point: CLI → MCP → serve
+    Commands/
+      CLICommand.swift          # Command protocol
+      CLIRouter.swift           # Subcommand dispatch
+      CLIArgParser.swift        # --json flag parsing
+      SearchCommand.swift       # search <query>
+      FetchCommand.swift        # fetch <path-or-url>
+      HIGCommand.swift          # hig [path]
+      VideoCommand.swift        # video <path>
+      ExternalCommand.swift     # external <url>
+      ServeCommand.swift        # serve [--port N]
+    Tools/
+      SearchTool.swift          # searchAppleDocumentation
+      FetchDocumentationTool.swift  # fetchAppleDocumentation
+      FetchExternalDocTool.swift    # fetchExternalDocumentation
+      FetchVideoTranscriptTool.swift # fetchAppleVideoTranscript
+    Server/
+      ServerApp.swift           # Hummingbird routes + llms.txt
+      SecurityHeadersMiddleware.swift
+      CORSMiddleware.swift
+      TrailingSlashMiddleware.swift
+    Resources/
+      DocumentationResource.swift
+      llms.txt
 Tests/
-  AppleDocsCoreTests/         # 56 tests covering URL, rendering, and integration
-    Fixtures/                 # Real Apple documentation JSON for testing
+  AppleDocsCoreTests/           # 395 tests in 105 suites
+    Fixtures/                   # Real Apple documentation JSON for testing
 ```
 
 See [docs/architecture.md](docs/architecture.md) for detailed architecture documentation.
@@ -278,11 +364,19 @@ See [docs/architecture.md](docs/architecture.md) for detailed architecture docum
 swift test
 ```
 
-56 tests covering URL utilities, Markdown rendering, and full integration with real Apple documentation fixtures.
+395 tests in 105 suites covering URL utilities, content rendering, search parsing, HIG (fetcher, renderer, path resolver, types), video transcripts, external docs (SSRF policy, robots.txt, fetcher, renderer), client routing, error handling, concurrency, user agent rotation, MCP tool logic, CLI parsing, integration, and snapshot tests.
+
+## Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| [swift-fast-mcp](https://github.com/mehmetbaykar/swift-fast-mcp) | MCP server framework (stdio transport, tool/resource registration) |
+| [SwiftSoup](https://github.com/scinfu/SwiftSoup) | HTML parsing for search results, video transcripts, robots.txt |
+| [Hummingbird](https://github.com/hummingbird-project/hummingbird) | HTTP server framework |
 
 ## Acknowledgments
 
-This project is a Swift port of [sosumi.ai](https://github.com/kanaa257/sosumi.ai) by [NSHipster](https://nshipster.com), originally built in TypeScript as a Cloudflare Worker with SSE transport. The core logic — JSON fetching, search parsing, and Markdown rendering — has been ported to Swift with the transport changed to stdio for local CLI use.
+This project is a Swift port of [sosumi.ai](https://github.com/kanaa257/sosumi.ai) by [NSHipster](https://nshipster.com), originally built in TypeScript as a Cloudflare Worker with SSE transport. The core logic — JSON fetching, search parsing, Markdown rendering, HIG support, video transcript extraction, and external documentation with SSRF protection — has been ported to Swift with full feature parity.
 
 The original project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
