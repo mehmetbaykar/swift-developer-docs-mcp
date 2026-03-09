@@ -29,6 +29,7 @@ struct ServerApp {
     let router = Router()
 
     // Add middleware
+    router.middlewares.add(TrailingSlashMiddleware())
     router.middlewares.add(SecurityHeadersMiddleware())
     router.middlewares.add(CORSMiddleware())
 
@@ -212,6 +213,13 @@ struct ServerApp {
       } catch {
         return handleExternalError(error, url: targetUrl)
       }
+    }
+
+    // Catch-all 404 for unmatched routes
+    router.get("/{path+}") { _, _ -> Response in
+      errorResponse(
+        status: .notFound,
+        message: "The requested resource was not found on this server.")
     }
 
     return router

@@ -468,6 +468,264 @@ struct ContentRendererTests {
     }
   }
 
+  // MARK: - Properties Rendering (M1)
+
+  @Suite("Properties Rendering")
+  struct PropertiesRendering {
+
+    @Test("Renders required property with type identifier")
+    func requiredPropertyWithType() {
+      let properties = [
+        PropertyItem(
+          name: "audioVariants",
+          required: true,
+          content: [
+            ContentItem(
+              type: "paragraph",
+              inlineContent: [ContentItem(text: "The available audio variants.", type: "text")])
+          ],
+          type: [
+            PropertyTypeItem(text: "[", kind: "text"),
+            PropertyTypeItem(
+              text: "AudioVariant",
+              kind: "typeIdentifier",
+              identifier: "doc://com.apple.test/documentation/Test/AudioVariant"),
+            PropertyTypeItem(text: "]", kind: "text"),
+          ]
+        )
+      ]
+      let refs: [String: ContentItem] = [
+        "doc://com.apple.test/documentation/Test/AudioVariant": ContentItem(
+          url: "/documentation/Test/AudioVariant")
+      ]
+      let result = ContentRenderer.renderProperties(properties, references: refs)
+      #expect(result.contains("## Properties"))
+      #expect(result.contains("### `audioVariants`"))
+      #expect(result.contains("[AudioVariant](/documentation/Test/AudioVariant)"))
+      #expect(result.contains("required"))
+      #expect(result.contains("The available audio variants."))
+    }
+
+    @Test("Renders optional property")
+    func optionalProperty() {
+      let properties = [
+        PropertyItem(
+          name: "bitrate",
+          required: false,
+          content: [
+            ContentItem(
+              type: "paragraph",
+              inlineContent: [ContentItem(text: "The bitrate value.", type: "text")])
+          ],
+          type: [PropertyTypeItem(text: "Int", kind: "typeIdentifier")]
+        )
+      ]
+      let result = ContentRenderer.renderProperties(properties, references: nil)
+      #expect(result.contains("### `bitrate`"))
+      #expect(result.contains("optional"))
+      #expect(!result.contains("required"))
+    }
+
+    @Test("Renders property with allowed values")
+    func propertyWithAllowedValues() {
+      let properties = [
+        PropertyItem(
+          name: "format",
+          required: true,
+          type: [PropertyTypeItem(text: "String", kind: "typeIdentifier")],
+          attributes: [
+            PropertyAttribute(
+              kind: "allowedValues",
+              values: ["mp3", "aac", "lossless"])
+          ]
+        )
+      ]
+      let result = ContentRenderer.renderProperties(properties, references: nil)
+      #expect(result.contains("Possible Values:"))
+      #expect(result.contains("`mp3`"))
+      #expect(result.contains("`aac`"))
+      #expect(result.contains("`lossless`"))
+    }
+
+    @Test("Renders empty properties array as empty string")
+    func emptyProperties() {
+      let result = ContentRenderer.renderProperties([], references: nil)
+      #expect(result == "")
+    }
+
+    @Test("Renders property with nil required as optional")
+    func nilRequiredIsOptional() {
+      let properties = [
+        PropertyItem(name: "codec")
+      ]
+      let result = ContentRenderer.renderProperties(properties, references: nil)
+      #expect(result.contains("optional"))
+    }
+
+    @Test("Renders property with no type")
+    func propertyNoType() {
+      let properties = [
+        PropertyItem(
+          name: "data",
+          required: true
+        )
+      ]
+      let result = ContentRenderer.renderProperties(properties, references: nil)
+      #expect(result.contains("### `data`"))
+      #expect(result.contains("required"))
+    }
+
+    @Test("Renders multiple properties in sequence")
+    func multipleProperties() {
+      let properties = [
+        PropertyItem(name: "id", required: true),
+        PropertyItem(name: "title", required: false),
+        PropertyItem(name: "duration", required: false),
+      ]
+      let result = ContentRenderer.renderProperties(properties, references: nil)
+      #expect(result.contains("### `id`"))
+      #expect(result.contains("### `title`"))
+      #expect(result.contains("### `duration`"))
+    }
+  }
+
+  // MARK: - Inline Image Rendering (M2)
+
+  @Suite("Inline Image Rendering")
+  struct InlineImageRendering {
+
+    @Test("Renders image with alt text and URL from reference variants")
+    func imageWithAltAndVariantURL() {
+      let items = [
+        ContentItem(
+          type: "image",
+          identifier: "img-001")
+      ]
+      let refs: [String: ContentItem] = [
+        "img-001": ContentItem(
+          alt: "A screenshot of the app",
+          variants: [ImageVariantRef(url: "/images/screenshot.png", traits: ["2x"])])
+      ]
+      let result = ContentRenderer.renderInlineContent(items, references: refs)
+      #expect(result == "![A screenshot of the app](/images/screenshot.png)")
+    }
+
+    @Test("Renders image with alt text from reference URL (no variants)")
+    func imageWithRefURL() {
+      let items = [
+        ContentItem(
+          type: "image",
+          identifier: "img-002")
+      ]
+      let refs: [String: ContentItem] = [
+        "img-002": ContentItem(
+          url: "/images/fallback.png",
+          alt: "Fallback image")
+      ]
+      let result = ContentRenderer.renderInlineContent(items, references: refs)
+      #expect(result == "![Fallback image](/images/fallback.png)")
+    }
+
+    @Test("Renders image with empty alt when alt is missing from both item and reference")
+    func imageMissingAlt() {
+      let items = [
+        ContentItem(
+          type: "image",
+          identifier: "img-003")
+      ]
+      let refs: [String: ContentItem] = [
+        "img-003": ContentItem(
+          variants: [ImageVariantRef(url: "/images/no-alt.png")])
+      ]
+      let result = ContentRenderer.renderInlineContent(items, references: refs)
+      #expect(result == "![](/images/no-alt.png)")
+    }
+
+    @Test("Uses item alt when reference alt is missing")
+    func imageItemAltFallback() {
+      let items = [
+        ContentItem(
+          type: "image",
+          identifier: "img-004",
+          alt: "Item-level alt")
+      ]
+      let refs: [String: ContentItem] = [
+        "img-004": ContentItem(
+          variants: [ImageVariantRef(url: "/images/item-alt.png")])
+      ]
+      let result = ContentRenderer.renderInlineContent(items, references: refs)
+      #expect(result == "![Item-level alt](/images/item-alt.png)")
+    }
+
+    @Test("Returns empty string when reference is missing entirely")
+    func imageMissingReference() {
+      let items = [
+        ContentItem(
+          type: "image",
+          identifier: "img-missing")
+      ]
+      let refs: [String: ContentItem] = [:]
+      let result = ContentRenderer.renderInlineContent(items, references: refs)
+      #expect(result == "")
+    }
+
+    @Test("Returns empty string when reference has no URL or variants")
+    func imageMissingURL() {
+      let items = [
+        ContentItem(
+          type: "image",
+          identifier: "img-no-url")
+      ]
+      let refs: [String: ContentItem] = [
+        "img-no-url": ContentItem(alt: "Has alt but no URL")
+      ]
+      let result = ContentRenderer.renderInlineContent(items, references: refs)
+      #expect(result == "")
+    }
+
+    @Test("Returns empty string when image has no identifier")
+    func imageNoIdentifier() {
+      let items = [
+        ContentItem(type: "image")
+      ]
+      let result = ContentRenderer.renderInlineContent(items, references: nil)
+      #expect(result == "")
+    }
+
+    @Test("Prefers variants URL over reference URL")
+    func imageVariantsPreferredOverRefURL() {
+      let items = [
+        ContentItem(
+          type: "image",
+          identifier: "img-both")
+      ]
+      let refs: [String: ContentItem] = [
+        "img-both": ContentItem(
+          url: "/images/ref-url.png",
+          alt: "Both URLs",
+          variants: [ImageVariantRef(url: "/images/variant-url.png")])
+      ]
+      let result = ContentRenderer.renderInlineContent(items, references: refs)
+      #expect(result == "![Both URLs](/images/variant-url.png)")
+    }
+
+    @Test("Renders image inline with surrounding text")
+    func imageInMixedContent() {
+      let items: [ContentItem] = [
+        ContentItem(text: "See ", type: "text"),
+        ContentItem(type: "image", identifier: "img-inline"),
+        ContentItem(text: " for details.", type: "text"),
+      ]
+      let refs: [String: ContentItem] = [
+        "img-inline": ContentItem(
+          alt: "diagram",
+          variants: [ImageVariantRef(url: "/images/diagram.png")])
+      ]
+      let result = ContentRenderer.renderInlineContent(items, references: refs)
+      #expect(result == "See ![diagram](/images/diagram.png) for details.")
+    }
+  }
+
   // MARK: - extractTitleFromIdentifier
 
   @Suite("Title Extraction")
