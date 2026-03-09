@@ -21,7 +21,7 @@ public enum VideoTranscript: Sendable {
   public static func fetchVideoTranscriptMarkdown(
     path: String,
     fetcher: @Sendable (_ url: URL) async throws -> (Data, URLResponse) =
-      URLSession.shared.data(from:)
+      { url in try await URLSession.shared.data(for: URLRequest(url: url)) }
   ) async throws -> String {
     let (collection, videoId, sourceUrl) = try parseVideoPath(path)
     let html = try await fetchVideoTranscriptHtml(url: sourceUrl, fetcher: fetcher)

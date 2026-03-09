@@ -84,7 +84,7 @@ public enum RobotsPolicy: Sendable {
     origin: String,
     userAgent: String,
     fetcher: @Sendable (_ url: URL) async throws -> (Data, URLResponse) =
-      URLSession.shared.data(from:)
+      { url in try await URLSession.shared.data(for: URLRequest(url: url)) }
   ) async -> RobotsPolicyResult {
     guard let robotsUrl = URL(string: "\(origin)/robots.txt") else {
       return .allowAll
@@ -120,7 +120,7 @@ public enum RobotsPolicy: Sendable {
     userAgent: String,
     cache: RobotsCache,
     fetcher: @escaping @Sendable (_ url: URL) async throws -> (Data, URLResponse) =
-      URLSession.shared.data(from:)
+      { url in try await URLSession.shared.data(for: URLRequest(url: url)) }
   ) async -> Bool {
     guard let host = url.host, let scheme = url.scheme else {
       return true
