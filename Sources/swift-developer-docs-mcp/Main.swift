@@ -12,7 +12,7 @@ struct AppleDocsServer {
 
     try await FastMCP.builder()
       .name("swift-developer-docs-mcp")
-      .version("1.1.0")
+      .version("1.2.0")
       .addTools([
         SearchAppleDocsTool(),
         FetchAppleDocsTool(),
