@@ -376,7 +376,7 @@ swift test
 
 ## Acknowledgments
 
-This project is a Swift port of [sosumi.ai](https://github.com/kanaa257/sosumi.ai) by [NSHipster](https://nshipster.com), originally built in TypeScript as a Cloudflare Worker with SSE transport. The core logic — JSON fetching, search parsing, Markdown rendering, HIG support, video transcript extraction, and external documentation with SSRF protection — has been ported to Swift with full feature parity.
+This project is a Swift port of [sosumi.ai](https://github.com/NSHipster/sosumi.ai) by [NSHipster](https://nshipster.com), originally built in TypeScript as a Cloudflare Worker with SSE transport. The core logic — JSON fetching, search parsing, Markdown rendering, HIG support, video transcript extraction, and external documentation with SSRF protection — has been ported to Swift with full feature parity.
 
 The original project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
