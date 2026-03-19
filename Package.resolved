@@ -1,5 +1,5 @@
 {
-  "originHash" : "834da202a0848a54f3842819251d5ef7b54f1cc0154d0a4495edc8353d4229e0",
+  "originHash" : "68e50a0b47a9c3cade6f1e252b66c665bced9f5170587f169df2075b9ba00c9c",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -123,8 +123,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mehmetbaykar/swift-fast-mcp",
       "state" : {
-        "revision" : "493723caf73a1c00dcdab0bd40657ce34e2e8354",
-        "version" : "1.0.2"
+        "revision" : "71f42a2d68399563b4a391cde87c13ae4bc4c9f6",
+        "version" : "2.1.0"
       }
     },
     {
@@ -168,8 +168,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mehmetbaykar/swift-mcp-toolkit.git",
       "state" : {
-        "revision" : "821962220158eb927119640c1ac2919c4039a2ac",
-        "version" : "0.3.0"
+        "revision" : "263532bbae883c62de6786d1be81e4c2e7438053",
+        "version" : "0.4.0"
       }
     },
     {
@@ -240,8 +240,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/modelcontextprotocol/swift-sdk",
       "state" : {
-        "revision" : "c0407a0b52677cb395d824cac2879b963075ba8c",
-        "version" : "0.10.2"
+        "revision" : "6112a3995a992d159ad0e82c2d62a008ce932666",
+        "version" : "0.11.0"
       }
     },
     {
