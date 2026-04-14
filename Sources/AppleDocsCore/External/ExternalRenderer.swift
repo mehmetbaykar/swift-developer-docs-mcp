@@ -10,21 +10,36 @@ public enum ExternalRenderer: Sendable {
     jsonData: AppleDocJSON,
     sourceUrl: URL
   ) -> String {
-    let basePath = (try? ExternalFetcher.extractExternalDocumentationBasePath(sourceUrl)) ?? ""
-    let externalOrigin = "\(sourceUrl.scheme ?? "https")://\(sourceUrl.host ?? "")\(basePath)"
-
-    return renderFromJSON(
-      jsonData, sourceURL: sourceUrl.absoluteString, externalOrigin: externalOrigin)
+    renderFromJSON(jsonData, sourceURL: sourceUrl.absoluteString)
   }
 
   static func renderFromJSON(
     _ jsonData: AppleDocJSON,
-    sourceURL: String,
-    externalOrigin: String
+    sourceURL: String
   ) -> String {
+    guard let pageURL = URL(string: sourceURL) else {
+      return ""
+    }
+
+    let encodedOriginBase: String
+    do {
+      let basePath = try ExternalFetcher.extractExternalDocumentationBasePath(pageURL)
+      encodedOriginBase = "\(pageURL.host ?? "")\(basePath)"
+    } catch {
+      encodedOriginBase = ""
+    }
+
+    let externalOriginOpt = encodedOriginBase.isEmpty ? nil : encodedOriginBase
+
     var markdown = ""
 
     markdown += generateFrontMatter(jsonData, sourceURL: sourceURL)
+
+    let breadcrumbs = generateBreadcrumbsExternal(
+      sourceURL: sourceURL, encodedOriginBase: encodedOriginBase)
+    if !breadcrumbs.isEmpty {
+      markdown += breadcrumbs
+    }
 
     if let roleHeading = jsonData.metadata?.roleHeading {
       markdown += "**\(roleHeading)**\n\n"
@@ -60,26 +75,49 @@ public enum ExternalRenderer: Sendable {
 
       let parametersSection = primarySections.first { $0.kind == "parameters" }
       if let parameters = parametersSection?.parameters {
-        markdown += ReferenceRenderer.renderParameters(parameters, references: jsonData.references)
+        markdown += renderParametersExternal(
+          parameters, references: jsonData.references, externalOrigin: externalOriginOpt)
+      }
+
+      let propertiesSection = primarySections.first { $0.kind == "properties" }
+      if let properties = propertiesSection?.items {
+        markdown += ContentRenderer.renderProperties(
+          properties, references: jsonData.references, externalOrigin: externalOriginOpt)
       }
 
       let contentSections = primarySections.filter { $0.kind == "content" }
       for section in contentSections {
         if let content = section.content {
-          markdown += renderContentWithExternalLinks(
-            content, references: jsonData.references, externalOrigin: externalOrigin)
+          markdown += ContentRenderer.renderContentArray(
+            content, references: jsonData.references, depth: 0, externalOrigin: externalOriginOpt)
         }
       }
     }
 
+    if let relationships = jsonData.relationshipsSections {
+      markdown += ContentRenderer.renderRelationships(
+        relationships, variants: jsonData.variants, refs: jsonData.references,
+        externalOrigin: externalOriginOpt)
+    }
+
     if let topics = jsonData.topicSections {
       markdown += renderTopicSectionsExternal(
-        topics, refs: jsonData.references, externalOrigin: externalOrigin)
+        topics, variants: jsonData.variants, refs: jsonData.references,
+        externalOrigin: externalOriginOpt)
+    }
+
+    if let swiftItems = jsonData.interfaceLanguages?.swift,
+      let first = swiftItems.first,
+      let children = first.children
+    {
+      let indexItems = children.map { swiftItemToIndexItem($0) }
+      markdown += renderIndexContentExternal(indexItems, externalOrigin: externalOriginOpt)
     }
 
     if let seeAlso = jsonData.seeAlsoSections {
       markdown += renderSeeAlsoExternal(
-        seeAlso, refs: jsonData.references, externalOrigin: externalOrigin)
+        seeAlso, variants: jsonData.variants, refs: jsonData.references,
+        externalOrigin: externalOriginOpt)
     }
 
     markdown = markdown.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -92,11 +130,17 @@ public enum ExternalRenderer: Sendable {
     return markdown
   }
 
+  // MARK: - Front matter (aligned with ReferenceRenderer)
+
   static func generateFrontMatter(_ data: AppleDocJSON, sourceURL: String) -> String {
     var lines: [String] = []
 
     if let title = data.metadata?.title {
-      lines.append("title: \(title)")
+      let cleanTitle = title.replacingOccurrences(of: "| Apple Developer Documentation", with: "")
+        .trimmingCharacters(in: .whitespaces)
+      lines.append("title: \(cleanTitle)")
+    } else if let swiftTitle = data.interfaceLanguages?.swift?.first?.title {
+      lines.append("title: \(swiftTitle)")
     }
 
     if let abstract = data.abstract {
@@ -120,179 +164,94 @@ public enum ExternalRenderer: Sendable {
     return "---\n\(lines.joined(separator: "\n"))\n---\n\n"
   }
 
-  static func convertExternalIdentifierToURL(
-    _ identifier: String,
-    references: [String: ContentItem]?,
-    externalOrigin: String
-  ) -> String {
-    if let reference = references?[identifier], let url = reference.url {
-      return rewriteExternalUrl(url, externalOrigin: externalOrigin)
-    }
+  /// Breadcrumbs using `documentation` segment index (works for hosted DocC paths with a site prefix).
+  static func generateBreadcrumbsExternal(sourceURL: String, encodedOriginBase: String) -> String {
+    guard let url = URL(string: sourceURL) else { return "" }
+    let pathParts = url.path.split(separator: "/").map(String.init)
+    guard let docIndex = pathParts.firstIndex(of: "documentation"),
+      pathParts.count > docIndex + 2
+    else { return "" }
 
-    if identifier.hasPrefix("doc://") {
-      if let range = identifier.range(of: #"\/documentation\/(.+)"#, options: .regularExpression) {
-        let docPath = String(identifier[range])
-        return rewriteExternalUrl(docPath, externalOrigin: externalOrigin)
+    let framework = pathParts[docIndex + 1]
+    let capitalized =
+      framework.prefix(1).uppercased() + framework.dropFirst()
+    let firstPath = "/documentation/\(framework)"
+    let firstLink = ContentRenderer.rewriteDocumentationPath(
+      firstPath, externalOrigin: encodedOriginBase.isEmpty ? nil : encodedOriginBase)
+    var breadcrumbs = "**Navigation:** [\(capitalized)](\(firstLink))"
+
+    if pathParts.count > docIndex + 2 {
+      for i in (docIndex + 2)..<(pathParts.count - 1) {
+        let part = pathParts[i]
+        let path = "/" + pathParts[docIndex...i].joined(separator: "/")
+        let rewritten = ContentRenderer.rewriteDocumentationPath(
+          path, externalOrigin: encodedOriginBase.isEmpty ? nil : encodedOriginBase)
+        breadcrumbs += " › [\(part)](\(rewritten))"
       }
     }
 
-    return identifier
+    return "\(breadcrumbs)\n\n"
   }
 
-  static func rewriteExternalUrl(_ path: String, externalOrigin: String) -> String {
-    guard !externalOrigin.isEmpty else {
-      return path
-    }
-
-    guard let originUrl = URL(string: externalOrigin),
-      let host = originUrl.host
-    else {
-      return path
-    }
-
-    let basePath = originUrl.path
-    let encodedOriginAndBase = "\(host)\(basePath)"
-
-    if path.hasPrefix("/documentation/") || path.hasPrefix("/tutorials/") {
-      let encodedUrl = "/external/\(encodedOriginAndBase)\(path)"
-      return encodedUrl
-    }
-
-    return path
-  }
-
-  static func renderContentWithExternalLinks(
-    _ content: [ContentItem],
-    references: [String: ContentItem]?,
-    externalOrigin: String,
-    depth: Int = 0
+  static func renderParametersExternal(
+    _ params: [Parameter], references: [String: ContentItem]?, externalOrigin: String?
   ) -> String {
-    if depth > 50 { return "[Content too deeply nested]" }
-
-    var markdown = ""
-    for item in content {
-      switch item.type {
-      case "heading":
-        let level = min(item.level ?? 2, 6)
-        let hashes = String(repeating: "#", count: level)
-        markdown += "\(hashes) \(item.text ?? "")\n\n"
-
-      case "paragraph":
-        if let inlineContent = item.inlineContent {
-          let text = renderInlineContentExternal(
-            inlineContent, references: references, externalOrigin: externalOrigin, depth: depth)
-          markdown += "\(text)\n\n"
-        }
-
-      case "codeListing":
-        var code = ""
-        if let codeValue = item.code {
-          switch codeValue {
-          case .single(let s): code = s
-          case .multiple(let arr): code = arr.joined(separator: "\n")
-          }
-        }
-        let syntax = item.syntax ?? "swift"
-        markdown += "```\(syntax)\n\(code)\n```\n\n"
-
-      case "unorderedList":
-        if let items = item.items {
-          for listItem in items {
-            let itemText = renderContentWithExternalLinks(
-              listItem.content ?? [], references: references,
-              externalOrigin: externalOrigin, depth: depth + 1)
-            markdown +=
-              "- \(itemText.replacingOccurrences(of: "\\n\\n$", with: "", options: .regularExpression))\n"
-          }
-          markdown += "\n"
-        }
-
-      case "orderedList":
-        if let items = item.items {
-          for (index, listItem) in items.enumerated() {
-            let itemText = renderContentWithExternalLinks(
-              listItem.content ?? [], references: references,
-              externalOrigin: externalOrigin, depth: depth + 1)
-            markdown +=
-              "\(index + 1). \(itemText.replacingOccurrences(of: "\\n\\n$", with: "", options: .regularExpression))\n"
-          }
-          markdown += "\n"
-        }
-
-      case "aside":
-        let style = item.style ?? "note"
-        let calloutType = ContentRenderer.mapAsideStyleToCallout(style)
-        let asideContent =
-          item.content != nil
-          ? renderContentWithExternalLinks(
-            item.content!, references: references,
-            externalOrigin: externalOrigin, depth: depth + 1)
-          : ""
-        let cleanContent = asideContent.trimmingCharacters(in: .whitespacesAndNewlines)
-          .replacingOccurrences(of: "\n", with: "\n> ")
-        markdown += "> [!\(calloutType)]\n> \(cleanContent)\n\n"
-
-      default:
-        break
+    if params.isEmpty { return "" }
+    var markdown = "## Parameters\n\n"
+    for param in params {
+      markdown += "**\(param.name)**\n\n"
+      if let content = param.content {
+        let paramText = ContentRenderer.renderContentArray(
+          content, references: references, depth: 0, externalOrigin: externalOrigin)
+        markdown += "\(paramText)\n\n"
       }
     }
     return markdown
   }
 
-  static func renderInlineContentExternal(
-    _ inlineContent: [ContentItem],
-    references: [String: ContentItem]?,
-    externalOrigin: String,
-    depth: Int = 0
-  ) -> String {
-    if depth > 20 { return "[Inline content too deeply nested]" }
+  static func swiftItemToIndexItem(_ item: SwiftInterfaceItem) -> IndexContentItem {
+    IndexContentItem(
+      type: item.type,
+      title: item.title,
+      path: item.path,
+      beta: item.beta,
+      children: item.children?.map { swiftItemToIndexItem($0) }
+    )
+  }
 
-    return inlineContent.map { item in
-      switch item.type {
-      case "text":
-        return item.text ?? ""
-      case "codeVoice":
-        if let codeValue = item.code {
-          switch codeValue {
-          case .single(let s): return "`\(s)`"
-          case .multiple(let arr): return "`\(arr.joined())`"
-          }
+  static func renderIndexContentExternal(_ children: [IndexContentItem], externalOrigin: String?)
+    -> String
+  {
+    renderIndexContentExternalWithIndent(children, headingLevel: 2, externalOrigin: externalOrigin)
+  }
+
+  static func renderIndexContentExternalWithIndent(
+    _ children: [IndexContentItem], headingLevel: Int, externalOrigin: String?
+  ) -> String {
+    var markdown = ""
+    for (i, child) in children.enumerated() {
+      if child.type == "groupMarker" {
+        if i > 0 { markdown += "\n" }
+        let hashes = String(repeating: "#", count: min(headingLevel, 6))
+        markdown += "\(hashes) \(child.title ?? "")\n\n"
+      } else if let path = child.path, let title = child.title {
+        let beta = child.beta == true ? " **Beta**" : ""
+        let rewritten = ContentRenderer.rewriteDocumentationPath(
+          path, externalOrigin: externalOrigin)
+        markdown += "- [\(title)](\(rewritten))\(beta)\n"
+        if let nestedChildren = child.children {
+          markdown += "\n"
+          markdown += renderIndexContentExternalWithIndent(
+            nestedChildren, headingLevel: headingLevel + 1, externalOrigin: externalOrigin)
         }
-        return ""
-      case "reference":
-        let title = item.title ?? item.text ?? ""
-        let url =
-          item.identifier != nil
-          ? convertExternalIdentifierToURL(
-            item.identifier!, references: references, externalOrigin: externalOrigin)
-          : ""
-        return "[\(title)](\(url))"
-      case "emphasis":
-        let inner =
-          item.inlineContent != nil
-          ? renderInlineContentExternal(
-            item.inlineContent!, references: references,
-            externalOrigin: externalOrigin, depth: depth + 1)
-          : ""
-        return "*\(inner)*"
-      case "strong":
-        let inner =
-          item.inlineContent != nil
-          ? renderInlineContentExternal(
-            item.inlineContent!, references: references,
-            externalOrigin: externalOrigin, depth: depth + 1)
-          : ""
-        return "**\(inner)**"
-      default:
-        return item.text ?? ""
       }
-    }.joined()
+    }
+    return markdown
   }
 
   static func renderTopicSectionsExternal(
-    _ topics: [TopicSection],
-    refs: [String: ContentItem]?,
-    externalOrigin: String
+    _ topics: [TopicSection], variants: [Variant]?, refs: [String: ContentItem]?,
+    externalOrigin: String?
   ) -> String {
     var markdown = ""
     for topic in topics {
@@ -300,19 +259,30 @@ public enum ExternalRenderer: Sendable {
       markdown += "## \(topic.title)\n\n"
       if let identifiers = topic.identifiers {
         for id in identifiers {
+          let info = variants?.first { $0.identifier == id }
           let reference = refs?[id]
-          let displayTitle = reference?.title ?? ContentRenderer.extractTitleFromIdentifier(id)
-          let url = convertExternalIdentifierToURL(
-            id, references: refs, externalOrigin: externalOrigin)
-          var abstractText = ""
-          if let refAbstract = reference?.abstract {
-            abstractText = refAbstract.compactMap { $0.text }.joined()
+          if info != nil || reference != nil {
+            let displayTitle =
+              info?.title ?? reference?.title ?? ContentRenderer.extractTitleFromIdentifier(id)
+            let url = ContentRenderer.convertIdentifierToURL(
+              id, references: refs, externalOrigin: externalOrigin)
+            var abstractText = ""
+            if let infoAbstract = info?.abstract {
+              abstractText = infoAbstract.compactMap { $0.text }.joined()
+            } else if let refAbstract = reference?.abstract {
+              abstractText = refAbstract.compactMap { $0.text }.joined()
+            }
+            markdown += "- [\(displayTitle)](\(url))"
+            if !abstractText.isEmpty {
+              markdown += " \(abstractText)"
+            }
+            markdown += "\n"
+          } else {
+            let displayTitle = ContentRenderer.extractTitleFromIdentifier(id)
+            let url = ContentRenderer.convertIdentifierToURL(
+              id, references: refs, externalOrigin: externalOrigin)
+            markdown += "- [\(displayTitle)](\(url))\n"
           }
-          markdown += "- [\(displayTitle)](\(url))"
-          if !abstractText.isEmpty {
-            markdown += " \(abstractText)"
-          }
-          markdown += "\n"
         }
         markdown += "\n"
       }
@@ -321,23 +291,59 @@ public enum ExternalRenderer: Sendable {
   }
 
   static func renderSeeAlsoExternal(
-    _ sections: [SeeAlsoSection],
-    refs: [String: ContentItem]?,
-    externalOrigin: String
+    _ sections: [SeeAlsoSection], variants: [Variant]?, refs: [String: ContentItem]?,
+    externalOrigin: String?
   ) -> String {
     var markdown = ""
     for section in sections {
       guard let identifiers = section.identifiers, !section.title.isEmpty else { continue }
       markdown += "## \(section.title)\n\n"
       for id in identifiers {
+        let info = variants?.first { $0.identifier == id }
         let reference = refs?[id]
-        let displayTitle = reference?.title ?? ContentRenderer.extractTitleFromIdentifier(id)
-        let url = convertExternalIdentifierToURL(
+        let displayTitle =
+          info?.title ?? reference?.title ?? ContentRenderer.extractTitleFromIdentifier(id)
+        let url = ContentRenderer.convertIdentifierToURL(
           id, references: refs, externalOrigin: externalOrigin)
         markdown += "- [\(displayTitle)](\(url))\n"
       }
       markdown += "\n"
     }
     return markdown
+  }
+
+  // MARK: - URL helpers (used by HTTP mirror + tests; encodes host + optional path prefix)
+
+  public static func rewriteExternalUrl(_ path: String, externalOrigin: String) -> String {
+    guard !externalOrigin.isEmpty,
+      let url = URL(string: externalOrigin),
+      let host = url.host
+    else {
+      return path
+    }
+    let trimmedBase =
+      url.path
+      .replacingOccurrences(of: #"/+$"#, with: "", options: .regularExpression)
+    let encoded = trimmedBase.isEmpty ? host : "\(host)\(trimmedBase)"
+    return ContentRenderer.rewriteDocumentationPath(path, externalOrigin: encoded)
+  }
+
+  public static func convertExternalIdentifierToURL(
+    _ identifier: String,
+    references: [String: ContentItem]?,
+    externalOrigin: String
+  ) -> String {
+    guard !externalOrigin.isEmpty,
+      let url = URL(string: externalOrigin),
+      let host = url.host
+    else {
+      return identifier
+    }
+    let trimmedBase =
+      url.path
+      .replacingOccurrences(of: #"/+$"#, with: "", options: .regularExpression)
+    let encoded = trimmedBase.isEmpty ? host : "\(host)\(trimmedBase)"
+    return ContentRenderer.convertIdentifierToURL(
+      identifier, references: references, externalOrigin: encoded)
   }
 }

@@ -17,19 +17,27 @@ GET /design/human-interface-guidelines/{path}
 GET /videos/play/{collection}/{id}
 
 ### External DocC
-GET /external/{host}/{path}
+GET /external/{full-https-url}
 
 ### Search
 GET /search?q={query}
 
+### MCP
+GET /mcp
+POST /mcp
+DELETE /mcp
+
 ## Content Negotiation
 
-All endpoints return text/markdown by default.
+`GET /` returns HTML by default.
+Send `Accept: text/markdown` to receive this `llms.txt` document instead.
+
+Documentation endpoints return text/markdown by default.
 Set `Accept: application/json` for JSON output.
 
 ## Available MCP Tools
 
-- `searchAppleDocumentation` - Search Apple Developer documentation
+- `searchAppleDocumentation` - Search Apple Developer documentation with structured results
 - `fetchAppleDocumentation` - Fetch documentation, HIG, or video transcripts by path
 - `fetchExternalDocumentation` - Fetch external Swift-DocC documentation by URL
 - `fetchAppleVideoTranscript` - Fetch Apple Developer video transcripts

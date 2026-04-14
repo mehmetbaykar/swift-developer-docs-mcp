@@ -97,6 +97,7 @@ Sources/AppleDocsCore/
 
 Sources/swift-developer-docs-mcp/
 ├── Main.swift                   — Entry point: CLI → MCP → serve
+├── AppleDocsMCPServer.swift     — MCP server metadata and tool registration
 ├── Commands/
 │   ├── CLICommand.swift         — Protocol definition
 │   ├── CLIRouter.swift          — Subcommand dispatch
@@ -114,17 +115,17 @@ Sources/swift-developer-docs-mcp/
 │   └── FetchVideoTranscriptTool.swift — fetchAppleVideoTranscript
 ├── Server/
 │   ├── ServerApp.swift          — Hummingbird routes + llms.txt
+│   ├── MCPHTTPBridge.swift      — MCP-over-HTTP bridge with session handling
 │   ├── SecurityHeadersMiddleware.swift
 │   ├── CORSMiddleware.swift
 │   └── TrailingSlashMiddleware.swift
 └── Resources/
-    ├── DocumentationResource.swift
     └── llms.txt
 ```
 
 ## Entry Point
 
-`Main.swift` creates a `CLIRouter` and checks for subcommands. If a subcommand matches, it runs in CLI mode and exits. Otherwise, it starts the MCP server on stdio.
+`Main.swift` creates an `AppleDocsMCPServer`, then a `CLIRouter`, and checks for subcommands. If a subcommand matches, it runs in CLI mode and exits. Otherwise, it starts the MCP server on stdio via the FastMCP builder.
 
 ```
 args present? ──yes──▶ CLIRouter ──▶ matched command ──▶ run & exit
@@ -192,7 +193,7 @@ All commands support `--json` for JSON output.
 
 | Tool | Input | Description |
 |------|-------|-------------|
-| `searchAppleDocumentation` | `query: String` | Search with formatted + JSON output |
+| `searchAppleDocumentation` | `query: String` | Search with readable text + native structured output |
 | `fetchAppleDocumentation` | `path: String` | Fetch reference docs or HIG |
 | `fetchExternalDocumentation` | `url: String` | Fetch external DocC with SSRF protection |
 | `fetchAppleVideoTranscript` | `path: String` | Fetch video transcripts |
@@ -213,11 +214,12 @@ Hummingbird-based HTTP server with these routes:
 | `GET /design/human-interface-guidelines/{path+}` | HIG pages |
 | `GET /videos/play/{collection}/{id}` | Video transcripts |
 | `GET /external/{path+}` | External documentation |
+| `GET /mcp`, `POST /mcp`, `DELETE /mcp` | MCP over HTTP |
 | `GET /{path+}` | Catch-all 404 handler |
 
 Middleware stack: TrailingSlashMiddleware → SecurityHeadersMiddleware → CORSMiddleware
 
-Content negotiation: `Accept: application/json` returns JSON, otherwise Markdown. Responses include `ETag`, `Cache-Control`, and `Content-Location` headers.
+Content negotiation: `GET /` returns HTML by default and `llms.txt` when `Accept: text/markdown` is sent. Documentation routes return JSON for `Accept: application/json`, otherwise Markdown. Responses include `ETag`, `Cache-Control`, and `Content-Location` headers.
 
 ## Core Library Modules
 
@@ -229,7 +231,7 @@ Shared rendering engine used by both ReferenceRenderer and ExternalRenderer:
 - `renderInlineContent` — text, codeVoice, reference, emphasis, strong, image, superscript, subscript, strikethrough, newTerm
 - `renderContentArray` — heading, paragraph, codeListing, lists, aside, table, row/column layout
 - `renderTable`, `renderAside`, `renderImage`, `renderProperties`, `renderRelationships`
-- Depth-limited (max 10) to prevent stack overflow on malformed data
+- Depth-limited (max content depth 50, max inline depth 20) to prevent stack overflow on malformed data while still supporting deeply nested Apple docs
 
 ### HIG Module
 Full Human Interface Guidelines support:
@@ -262,7 +264,7 @@ External Swift-DocC documentation with full SSRF protection:
 
 ## Test Coverage
 
-395 tests in 105 suites covering:
+The test suite covers:
 - Reference rendering (smoke tests, snapshot tests, content renderer tests)
 - Search parsing (HTML fixture-based tests)
 - HIG (fetcher, renderer, path resolver, types codability)

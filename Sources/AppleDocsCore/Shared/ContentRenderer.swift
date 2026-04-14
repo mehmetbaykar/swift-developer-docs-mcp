@@ -1,8 +1,8 @@
 import Foundation
 
 public struct ContentRenderer: Sendable {
-  private static let maxContentDepth = 10
-  private static let maxInlineDepth = 10
+  private static let maxContentDepth = 50
+  private static let maxInlineDepth = 20
 
   // MARK: - Inline Content Rendering
 
@@ -104,144 +104,252 @@ public struct ContentRenderer: Sendable {
 
     var markdown = ""
     for item in content {
-      switch item.type {
-      case "heading":
-        let level = min(item.level ?? 2, 6)
-        let hashes = String(repeating: "#", count: level)
-        let text =
-          item.text
-          ?? (item.inlineContent.map {
-            renderInlineContent(
-              $0, references: references, depth: depth, externalOrigin: externalOrigin)
-          } ?? "")
-        markdown += "\(hashes) \(text)\n\n"
+      markdown += renderBlock(
+        item, references: references, depth: depth, externalOrigin: externalOrigin)
+    }
+    return markdown
+  }
 
-      case "paragraph":
-        if let inlineContent = item.inlineContent {
-          let text = renderInlineContent(
-            inlineContent, references: references, depth: depth, externalOrigin: externalOrigin)
-          markdown += "\(text)\n\n"
-        }
+  private static func renderBlock(
+    _ item: ContentItem, references: [String: ContentItem]?, depth: Int,
+    externalOrigin: String?
+  ) -> String {
+    switch item.type {
+    case "heading":
+      return renderHeading(
+        item, references: references, depth: depth, externalOrigin: externalOrigin)
+    case "paragraph":
+      return renderParagraph(
+        item, references: references, depth: depth, externalOrigin: externalOrigin)
+    case "codeListing":
+      return renderCodeListing(item)
+    case "unorderedList":
+      return renderList(
+        item,
+        ordered: false,
+        references: references,
+        depth: depth,
+        externalOrigin: externalOrigin
+      )
+    case "orderedList":
+      return renderList(
+        item,
+        ordered: true,
+        references: references,
+        depth: depth,
+        externalOrigin: externalOrigin
+      )
+    case "aside":
+      return renderAside(item, references: references, depth: depth, externalOrigin: externalOrigin)
+    case "table":
+      return renderTable(item, references: references, depth: depth, externalOrigin: externalOrigin)
+    case "row":
+      return renderRow(item, references: references, depth: depth, externalOrigin: externalOrigin)
+    case "small":
+      return renderSmall(item, references: references, depth: depth, externalOrigin: externalOrigin)
+    case "tabNavigator":
+      return renderTabNavigator(
+        item, references: references, depth: depth, externalOrigin: externalOrigin)
+    case "links":
+      return renderLinks(item, references: references, externalOrigin: externalOrigin)
+    case "termList":
+      return renderTermList(
+        item, references: references, depth: depth, externalOrigin: externalOrigin)
+    case "dictionaryExample":
+      return renderDictionaryExample(
+        item, references: references, depth: depth, externalOrigin: externalOrigin)
+    default:
+      return ""
+    }
+  }
 
-      case "codeListing":
-        var code = ""
-        if let codeValue = item.code {
-          switch codeValue {
-          case .single(let s): code = s
-          case .multiple(let arr): code = arr.joined(separator: "\n")
-          }
-        }
-        let syntax = item.syntax ?? "swift"
-        markdown += "```\(syntax)\n\(code)\n```\n\n"
+  private static func renderHeading(
+    _ item: ContentItem, references: [String: ContentItem]?, depth: Int,
+    externalOrigin: String?
+  ) -> String {
+    let level = min(item.level ?? 2, 6)
+    let hashes = String(repeating: "#", count: level)
+    let text =
+      item.text
+      ?? (item.inlineContent.map {
+        renderInlineContent(
+          $0, references: references, depth: depth, externalOrigin: externalOrigin)
+      } ?? "")
+    return "\(hashes) \(text)\n\n"
+  }
 
-      case "unorderedList":
-        if let items = item.items {
-          for listItem in items {
-            let itemText = renderContentArray(
-              listItem.content ?? [], references: references, depth: depth + 1,
-              externalOrigin: externalOrigin)
-            markdown +=
-              "- \(itemText.replacingOccurrences(of: "\\n\\n$", with: "", options: .regularExpression))\n"
-          }
-          markdown += "\n"
-        }
+  private static func renderParagraph(
+    _ item: ContentItem, references: [String: ContentItem]?, depth: Int,
+    externalOrigin: String?
+  ) -> String {
+    guard let inlineContent = item.inlineContent else { return "" }
+    let text = renderInlineContent(
+      inlineContent, references: references, depth: depth, externalOrigin: externalOrigin)
+    return "\(text)\n\n"
+  }
 
-      case "orderedList":
-        if let items = item.items {
-          for (index, listItem) in items.enumerated() {
-            let itemText = renderContentArray(
-              listItem.content ?? [], references: references, depth: depth + 1,
-              externalOrigin: externalOrigin)
-            markdown +=
-              "\(index + 1). \(itemText.replacingOccurrences(of: "\\n\\n$", with: "", options: .regularExpression))\n"
-          }
-          markdown += "\n"
-        }
+  private static func renderCodeListing(_ item: ContentItem) -> String {
+    let code: String
+    switch item.code {
+    case .single(let string):
+      code = string
+    case .multiple(let lines):
+      code = lines.joined(separator: "\n")
+    case nil:
+      code = ""
+    }
 
-      case "aside":
-        markdown += renderAside(
-          item, references: references, depth: depth, externalOrigin: externalOrigin)
+    let syntax = item.syntax ?? "swift"
+    return "```\(syntax)\n\(code)\n```\n\n"
+  }
 
-      case "table":
-        markdown += renderTable(
-          item, references: references, depth: depth, externalOrigin: externalOrigin)
+  private static func renderList(
+    _ item: ContentItem,
+    ordered: Bool,
+    references: [String: ContentItem]?,
+    depth: Int,
+    externalOrigin: String?
+  ) -> String {
+    guard let items = item.items else { return "" }
 
-      case "row":
-        if let columns = item.content {
-          for column in columns {
-            if let colContent = column.content {
-              markdown += renderContentArray(
-                colContent, references: references, depth: depth + 1,
-                externalOrigin: externalOrigin)
-            }
-          }
-        }
+    var markdown = ""
+    for (index, listItem) in items.enumerated() {
+      let itemText = renderContentArray(
+        listItem.content ?? [],
+        references: references,
+        depth: depth + 1,
+        externalOrigin: externalOrigin
+      )
+      let normalized = itemText.replacingOccurrences(
+        of: "\\n\\n$",
+        with: "",
+        options: .regularExpression
+      )
+      if ordered {
+        markdown += "\(index + 1). \(normalized)\n"
+      } else {
+        markdown += "- \(normalized)\n"
+      }
+    }
 
-      case "small":
-        if let inlineContent = item.inlineContent {
-          let text = renderInlineContent(
-            inlineContent, references: references, depth: depth, externalOrigin: externalOrigin)
-          markdown += "<small>\(text)</small>\n\n"
-        }
+    return markdown.isEmpty ? "" : "\(markdown)\n"
+  }
 
-      case "tabNavigator":
-        if let tabs = item.items {
-          for tab in tabs {
-            if let tabTitle = tab.title {
-              markdown += "### \(tabTitle)\n\n"
-            }
-            if let tabContent = tab.content {
-              markdown += renderContentArray(
-                tabContent, references: references, depth: depth + 1,
-                externalOrigin: externalOrigin)
-            }
-          }
-        }
+  private static func renderRow(
+    _ item: ContentItem, references: [String: ContentItem]?, depth: Int,
+    externalOrigin: String?
+  ) -> String {
+    guard let columns = item.content else { return "" }
 
-      case "links":
-        if let identifiers = item.identifiers {
-          for id in identifiers {
-            let title = extractTitleFromIdentifier(id)
-            let url = convertIdentifierToURL(
-              id, references: references, externalOrigin: externalOrigin)
-            markdown += "- [\(title)](\(url))\n"
-          }
-          markdown += "\n"
-        }
+    var markdown = ""
+    for column in columns {
+      guard let colContent = column.content else { continue }
+      markdown += renderContentArray(
+        colContent,
+        references: references,
+        depth: depth + 1,
+        externalOrigin: externalOrigin
+      )
+    }
+    return markdown
+  }
 
-      case "termList":
-        if let items = item.items {
-          for termItem in items {
-            if let term = termItem.content?.first {
-              let termText =
-                term.inlineContent != nil
-                ? renderInlineContent(
-                  term.inlineContent!, references: references, depth: depth,
-                  externalOrigin: externalOrigin)
-                : (term.text ?? "")
-              markdown += "**\(termText)**\n"
-            }
-            if let definition = termItem.content, definition.count > 1 {
-              let defContent = Array(definition.dropFirst())
-              markdown += renderContentArray(
-                defContent, references: references, depth: depth + 1,
-                externalOrigin: externalOrigin)
-            }
-            markdown += "\n"
-          }
-        }
+  private static func renderSmall(
+    _ item: ContentItem, references: [String: ContentItem]?, depth: Int,
+    externalOrigin: String?
+  ) -> String {
+    guard let inlineContent = item.inlineContent else { return "" }
+    let text = renderInlineContent(
+      inlineContent, references: references, depth: depth, externalOrigin: externalOrigin)
+    return "<small>\(text)</small>\n\n"
+  }
 
-      case "dictionaryExample":
-        if let content = item.content {
-          markdown += renderContentArray(
-            content, references: references, depth: depth + 1, externalOrigin: externalOrigin)
-        }
+  private static func renderTabNavigator(
+    _ item: ContentItem, references: [String: ContentItem]?, depth: Int,
+    externalOrigin: String?
+  ) -> String {
+    guard let tabs = item.items else { return "" }
 
-      default:
-        break
+    var markdown = ""
+    for tab in tabs {
+      if let tabTitle = tab.title {
+        markdown += "### \(tabTitle)\n\n"
+      }
+      if let tabContent = tab.content {
+        markdown += renderContentArray(
+          tabContent,
+          references: references,
+          depth: depth + 1,
+          externalOrigin: externalOrigin
+        )
       }
     }
     return markdown
+  }
+
+  private static func renderLinks(
+    _ item: ContentItem, references: [String: ContentItem]?,
+    externalOrigin: String?
+  ) -> String {
+    guard let identifiers = item.identifiers else { return "" }
+
+    let markdown = identifiers.map { identifier in
+      let title = extractTitleFromIdentifier(identifier)
+      let url = convertIdentifierToURL(
+        identifier,
+        references: references,
+        externalOrigin: externalOrigin
+      )
+      return "- [\(title)](\(url))"
+    }.joined(separator: "\n")
+
+    return markdown.isEmpty ? "" : "\(markdown)\n\n"
+  }
+
+  private static func renderTermList(
+    _ item: ContentItem, references: [String: ContentItem]?, depth: Int,
+    externalOrigin: String?
+  ) -> String {
+    guard let items = item.items else { return "" }
+
+    var markdown = ""
+    for termItem in items {
+      if let term = termItem.content?.first {
+        let termText =
+          term.inlineContent != nil
+          ? renderInlineContent(
+            term.inlineContent!, references: references, depth: depth,
+            externalOrigin: externalOrigin)
+          : (term.text ?? "")
+        markdown += "**\(termText)**\n"
+      }
+
+      if let definition = termItem.content, definition.count > 1 {
+        markdown += renderContentArray(
+          Array(definition.dropFirst()),
+          references: references,
+          depth: depth + 1,
+          externalOrigin: externalOrigin
+        )
+      }
+
+      markdown += "\n"
+    }
+
+    return markdown
+  }
+
+  private static func renderDictionaryExample(
+    _ item: ContentItem, references: [String: ContentItem]?, depth: Int,
+    externalOrigin: String?
+  ) -> String {
+    guard let content = item.content else { return "" }
+    return renderContentArray(
+      content,
+      references: references,
+      depth: depth + 1,
+      externalOrigin: externalOrigin
+    )
   }
 
   // MARK: - Table Rendering

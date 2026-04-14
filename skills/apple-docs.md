@@ -7,97 +7,99 @@ allowed-tools: Bash(npx *)
 
 Search and fetch Apple developer documentation for: $ARGUMENTS
 
-## About this tool
+# swift-developer-docs-mcp Skill
 
-Apple's developer documentation is JavaScript-rendered and invisible to LLMs. This tool fetches the underlying JSON data from developer.apple.com and converts it to clean, structured Markdown with full API details — declarations, parameters, platform availability, code examples, topic sections, conformances, and see-also links.
+Use this skill to reliably fetch Apple docs as Markdown when coding agents need precise API details.
 
-Supports four content types:
-- **Reference documentation** — API docs for all Apple frameworks
-- **Human Interface Guidelines** — Apple's design guidelines (HIG)
-- **WWDC video transcripts** — Timestamped transcripts from Apple developer videos
-- **External Swift-DocC sites** — Third-party documentation hosted as Swift-DocC (with SSRF protection)
+## When to Use
 
-## How to use
+Use this skill when the request involves any of the following:
 
-### Step 1: Search
+- Apple platform APIs (`Swift`, `SwiftUI`, `UIKit`, `AppKit`, `Foundation`, etc.)
+- API signatures, availability, parameter behavior, or return semantics
+- Human Interface Guidelines questions
+- WWDC session transcript lookup
+- External Swift-DocC documentation (for example, GitHub Pages or Swift Package Index hosts)
 
-Run the search command to find relevant documentation pages:
+## Core Workflow
+
+1. If you already know the exact path, fetch it directly.
+2. If you do not know the exact page path, search first, then fetch the best match.
+3. Prefer specific symbol pages instead of broad top-level pages when answering implementation questions.
+
+## CLI Usage
+
+### Search
 
 ```bash
 npx -y @mehmetbaykar/swift-developer-docs-mcp search "$ARGUMENTS"
 ```
 
-Search returns a numbered list followed by structured JSON. Each result includes:
-- **Title** and **URL**
-- **Description** (abstract text)
-- **Path** (breadcrumbs, e.g., `SwiftUI > NSHostingView > rootView`)
-- **Tags** indicating result type: `DOCUMENTATION`, `DOCUMENTATION ARTICLE`, `SAMPLE CODE`, `WWDC VIDEO`, `NEWS`
+### Apple API Reference
 
-### Step 2: Fetch the best match
-
-Based on the URL pattern, use the appropriate command:
-
-**Reference documentation** (URLs containing `/documentation/`):
 ```bash
-npx -y @mehmetbaykar/swift-developer-docs-mcp fetch <path>
+npx -y @mehmetbaykar/swift-developer-docs-mcp fetch swift/array
+npx -y @mehmetbaykar/swift-developer-docs-mcp fetch swiftui/view
 ```
-Path examples: `swift/array`, `swiftui/view`, `foundation/urlsession`, `swift/array/append(_:)`
 
-**Human Interface Guidelines** (URLs containing `/design/human-interface-guidelines/`):
-```bash
-npx -y @mehmetbaykar/swift-developer-docs-mcp hig <path>
-```
-Path examples: `foundations/color`, `components/menus-and-actions/buttons`, `inputs/touch-interactions`
+### Human Interface Guidelines
 
-To get the full HIG table of contents:
 ```bash
 npx -y @mehmetbaykar/swift-developer-docs-mcp hig
+npx -y @mehmetbaykar/swift-developer-docs-mcp hig foundations/color
 ```
 
-**WWDC video transcripts** (URLs containing `/videos/play/`):
+### Apple Video Transcripts
+
 ```bash
-npx -y @mehmetbaykar/swift-developer-docs-mcp video videos/play/<collection>/<id>
+npx -y @mehmetbaykar/swift-developer-docs-mcp video videos/play/wwdc2024/10133
 ```
-Path examples: `videos/play/wwdc2024/10133`, `videos/play/wwdc2023/10148`
 
-**External Swift-DocC sites**:
+### External Swift-DocC
+
 ```bash
-npx -y @mehmetbaykar/swift-developer-docs-mcp external <url>
+npx -y @mehmetbaykar/swift-developer-docs-mcp external https://apple.github.io/swift-argument-parser/documentation/argumentparser
 ```
-URL examples: `https://apple.github.io/swift-argument-parser/documentation/argumentparser`
 
-**Auto-routing** — the `fetch` command can also auto-detect content type from the path:
+### Auto-routing
+
 ```bash
 npx -y @mehmetbaykar/swift-developer-docs-mcp fetch design/human-interface-guidelines/foundations/color
 npx -y @mehmetbaykar/swift-developer-docs-mcp fetch videos/play/wwdc2024/10133
 npx -y @mehmetbaykar/swift-developer-docs-mcp fetch https://apple.github.io/swift-argument-parser/documentation/argumentparser
 ```
 
-### Step 3: Present the documentation
+## MCP Tools Quick Reference
 
-The fetched output is a comprehensive Markdown document. For example, `fetch swift/array` returns ~550 lines covering:
+Use these when `swift-developer-docs-mcp` is configured as an MCP server, either over stdio or HTTP (`/mcp`):
 
-- **YAML front matter** — title, description, source URL, timestamp
-- **Navigation breadcrumbs** — e.g., `[Swift](/documentation/swift)`
-- **Role heading** — Structure, Protocol, Class, Function, etc.
-- **Platform availability** — e.g., `iOS 8.0+, iPadOS 8.0+, macOS 10.10+, visionOS 1.0+`
-- **Abstract** — blockquote summary
-- **Swift declaration** — e.g., `@frozen struct Array<Element>`
-- **Overview** — full prose documentation with code examples
-- **Topic sections** — organized by category
-- **Conformances** — full list
-- **Related types** and **See Also** links
+| Tool | Parameters | Use |
+|---|---|---|
+| `searchAppleDocumentation` | `query: string` | Search Apple documentation and return readable text plus native structured MCP output |
+| `fetchAppleDocumentation` | `path: string` | Fetch Apple docs, HIG content, video transcripts, or external docs via auto-routing |
+| `fetchAppleVideoTranscript` | `path: string` | Fetch Apple video transcript by `/videos/play/...` path |
+| `fetchExternalDocumentation` | `url: string` | Fetch external Swift-DocC page by absolute HTTPS URL |
 
-Present this documentation clearly. If the user asked about a specific API, highlight the relevant sections. If they asked a general question, summarize the key points and link to specific methods.
+## Best Practices
 
-## Tips
+- Search first if the exact path is unknown.
+- Fetch targeted symbol pages for coding questions.
+- Keep source links in answers so users can verify details quickly.
+- Use the CLI `fetch` command when you want automatic routing across documentation, HIG, video, and external docs.
 
-- If the query looks like a doc path (contains `/`, e.g., `swift/array`, `swiftui/view`), skip search and fetch directly.
-- If the query mentions "HIG", "design guidelines", or "human interface", use the `hig` command.
-- If the query mentions a WWDC session number or "video transcript", use the `video` command.
-- If the query includes a non-Apple URL (e.g., `github.io`), use the `external` command.
-- If search returns no results, suggest alternative search terms or try a broader query.
-- You can fetch multiple pages to compare APIs or gather comprehensive information.
-- The tool rotates through 26 user-agent strings to avoid rate limiting, so repeated calls are safe.
-- Search returns both human-readable text AND structured JSON — use the JSON when you need to programmatically extract paths.
-- All commands support `--json` for structured JSON output.
+## Troubleshooting
+
+### 404 or sparse output
+
+- The path may be incorrect or too broad.
+- Run a search query first, then fetch a specific result path.
+
+### External page cannot be fetched
+
+- The host may block access via `robots.txt` or `X-Robots-Tag` directives.
+- Try another canonical page URL for the same symbol.
+
+### Search clients only show text
+
+- `searchAppleDocumentation` now publishes native `structuredContent` and `outputSchema`.
+- Some MCP clients still display only text content, so the tool also keeps a readable summary in the normal content payload.

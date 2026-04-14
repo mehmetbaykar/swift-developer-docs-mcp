@@ -106,7 +106,7 @@ struct ContentRendererTests {
     @Test("Returns depth-exceeded message for deeply nested content")
     func depthExceeded() {
       let items = [ContentItem(text: "deep", type: "text")]
-      let result = ContentRenderer.renderInlineContent(items, references: nil, depth: 11)
+      let result = ContentRenderer.renderInlineContent(items, references: nil, depth: 21)
       #expect(result == "[Inline content too deeply nested]")
     }
   }
@@ -229,7 +229,7 @@ struct ContentRendererTests {
           type: "paragraph",
           inlineContent: [ContentItem(text: "deep", type: "text")])
       ]
-      let result = ContentRenderer.renderContentArray(items, references: nil, depth: 11)
+      let result = ContentRenderer.renderContentArray(items, references: nil, depth: 51)
       #expect(result == "[Content too deeply nested]")
     }
   }

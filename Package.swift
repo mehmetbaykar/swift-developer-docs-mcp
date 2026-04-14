@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 
 import PackageDescription
 
@@ -10,7 +10,7 @@ let package = Package(
     .executable(name: "swift-developer-docs-mcp", targets: ["swift-developer-docs-mcp"]),
   ],
   dependencies: [
-    .package(url: "https://github.com/mehmetbaykar/swift-fast-mcp", from: "1.0.2"),
+    .package(url: "https://github.com/mehmetbaykar/swift-fast-mcp", exact: "2.2.0"),
     .package(url: "https://github.com/scinfu/SwiftSoup", from: "2.7.0"),
     .package(url: "https://github.com/hummingbird-project/hummingbird", from: "2.0.0"),
   ],
@@ -25,7 +25,8 @@ let package = Package(
         "AppleDocsCore",
         .product(name: "FastMCP", package: "swift-fast-mcp"),
         .product(name: "Hummingbird", package: "hummingbird"),
-      ]
+      ],
+      exclude: ["Resources/llms.txt"]
     ),
     .testTarget(
       name: "AppleDocsCoreTests",

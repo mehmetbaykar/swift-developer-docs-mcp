@@ -5,22 +5,13 @@ import Foundation
 struct AppleDocsServer {
   static func main() async throws {
     let router = CLIRouter()
+    let mcpServer = AppleDocsMCPServer()
 
     if try await router.route(CommandLine.arguments) {
       return
     }
 
-    try await FastMCP.builder()
-      .name("swift-developer-docs-mcp")
-      .version("1.2.0")
-      .addTools([
-        SearchAppleDocsTool(),
-        FetchAppleDocsTool(),
-        FetchExternalDocTool(),
-        FetchVideoTranscriptTool(),
-      ])
-      .addResources([DocumentationResource()])
-      .transport(.stdio)
+    try await mcpServer.builder(transport: .stdio)
       .shutdownSignals([.sigterm, .sigint])
       .run()
   }

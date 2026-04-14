@@ -38,7 +38,7 @@ swift-developer-docs-mcp help
 
 ### Build from source
 
-Requires macOS 14+ and Swift 6.0+:
+Requires macOS 14+ and Swift 6.2+:
 
 ```bash
 git clone https://github.com/mehmetbaykar/swift-developer-docs-mcp.git
@@ -49,7 +49,7 @@ swift build
 ## Requirements
 
 - **npm install**: Node.js 20+
-- **Build from source**: macOS 14+, Swift 6.0+
+- **Build from source**: macOS 14+, Swift 6.2+
 
 ## Usage
 
@@ -191,15 +191,16 @@ npx @mehmetbaykar/swift-developer-docs-mcp serve --port 8080
 
 | Route | Description |
 |-------|-------------|
-| `GET /` | llms.txt — service description |
+| `GET /` | HTML landing page, or `llms.txt` when `Accept: text/markdown` |
 | `GET /search?q=...` | Search documentation |
 | `GET /documentation/{path}` | Reference documentation |
 | `GET /design/human-interface-guidelines` | HIG table of contents |
 | `GET /design/human-interface-guidelines/{path}` | HIG pages |
 | `GET /videos/play/{collection}/{id}` | Video transcripts |
-| `GET /external/{host}/{path}` | External DocC documentation |
+| `GET /external/{full-https-url}` | External DocC documentation |
+| `GET /mcp`, `POST /mcp`, `DELETE /mcp` | MCP over HTTP |
 
-All endpoints return `text/markdown` by default. Set `Accept: application/json` for JSON. Responses include `ETag`, `Cache-Control`, and `Content-Location` headers.
+Documentation endpoints return `text/markdown` by default. Set `Accept: application/json` for JSON. Responses include `ETag`, `Cache-Control`, and `Content-Location` headers. `GET /` returns HTML unless `Accept: text/markdown` is sent.
 
 ---
 
@@ -254,11 +255,13 @@ Claude can then use the MCP tools directly when you ask things like:
 - "Get the WWDC 2024 video transcript for session 10133"
 - "Fetch the swift-argument-parser documentation"
 
+With `swift-fast-mcp` `2.2.0`, `searchAppleDocumentation` now uses native structured MCP output. Clients receive a readable text summary plus typed `structuredContent` published through `outputSchema`.
+
 ---
 
 ### Claude Code Skill
 
-The `skills/apple-docs.md` file is a [Claude Code skill](https://docs.anthropic.com/en/docs/claude-code/skills) that gives Claude the ability to search and fetch Apple documentation on your behalf. When you invoke it, Claude will:
+The repo includes one Claude Code skill file at `skills/apple-docs.md`. It gives Claude the ability to search and fetch Apple documentation on your behalf. When you invoke the skill, Claude will:
 
 1. **Search** Apple's documentation for your query
 2. **Pick** the most relevant result
@@ -328,6 +331,7 @@ Sources/
     AppleDocsClient.swift       # Injectable actions struct with unified routing
   swift-developer-docs-mcp/     # Executable (CLI + MCP + HTTP server)
     Main.swift                  # Entry point: CLI → MCP → serve
+    AppleDocsMCPServer.swift    # MCP server metadata and tool registration
     Commands/
       CLICommand.swift          # Command protocol
       CLIRouter.swift           # Subcommand dispatch
@@ -345,14 +349,14 @@ Sources/
       FetchVideoTranscriptTool.swift # fetchAppleVideoTranscript
     Server/
       ServerApp.swift           # Hummingbird routes + llms.txt
+      MCPHTTPBridge.swift       # MCP-over-HTTP bridge using the MCP SDK transports
       SecurityHeadersMiddleware.swift
       CORSMiddleware.swift
       TrailingSlashMiddleware.swift
     Resources/
-      DocumentationResource.swift
       llms.txt
 Tests/
-  AppleDocsCoreTests/           # 395 tests in 105 suites
+  AppleDocsCoreTests/
     Fixtures/                   # Real Apple documentation JSON for testing
 ```
 
@@ -364,7 +368,7 @@ See [docs/architecture.md](docs/architecture.md) for detailed architecture docum
 swift test
 ```
 
-395 tests in 105 suites covering URL utilities, content rendering, search parsing, HIG (fetcher, renderer, path resolver, types), video transcripts, external docs (SSRF policy, robots.txt, fetcher, renderer), client routing, error handling, concurrency, user agent rotation, MCP tool logic, CLI parsing, integration, and snapshot tests.
+The test suite covers URL utilities, content rendering, search parsing and formatting, HIG (fetcher, renderer, path resolver, types), video transcripts, external docs (SSRF policy, robots.txt, fetcher, renderer), client routing, error handling, concurrency, user agent rotation, MCP tool logic, CLI parsing, integration, and snapshot tests.
 
 ## Dependencies
 

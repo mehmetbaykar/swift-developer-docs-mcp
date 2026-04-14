@@ -92,6 +92,80 @@ struct SearchTests {
     #expect(results.isEmpty)
   }
 
+  @Test("Formats search summary with Sosumi-compatible text output")
+  func formatSearchSummary() {
+    let response = SearchResponse(
+      query: "SwiftUI View",
+      results: [
+        SearchResult(
+          title: "View",
+          url: "https://developer.apple.com/documentation/swiftui/view",
+          description: "A type that represents part of your app's user interface.",
+          breadcrumbs: ["SwiftUI", "Views"],
+          tags: ["Swift"],
+          type: "documentation"
+        )
+      ]
+    )
+
+    let formatted = AppleDocsActions.formatSearchResponse(response)
+
+    #expect(
+      formatted
+        == """
+        Found 1 result(s) for "SwiftUI View":
+
+        1. View
+           https://developer.apple.com/documentation/swiftui/view
+           A type that represents part of your app's user interface.
+        """
+    )
+  }
+
+  @Test("Formats empty search results with quoted query")
+  func formatEmptySearchSummary() {
+    let response = SearchResponse(query: "missing symbol", results: [])
+    #expect(
+      AppleDocsActions.formatSearchResponse(response) == "No results found for \"missing symbol\"")
+  }
+
+  @Test("Encodes empty search responses as structured JSON")
+  func encodeEmptySearchResponse() throws {
+    let response = SearchResponse(query: "missing symbol", results: [])
+    let json = try AppleDocsActions.encodeSearchResponse(response)
+    #expect(json.contains("\"query\""))
+    #expect(json.contains("\"missing symbol\""))
+    #expect(json.contains("\"results\""))
+  }
+
+  @Test("Decodes structured search output from JSON payload")
+  func decodeStructuredSearchOutput() throws {
+    let response = SearchResponse(
+      query: "SwiftUI View",
+      results: [
+        SearchResult(
+          title: "View",
+          url: "https://developer.apple.com/documentation/swiftui/view",
+          description: "A type that represents part of your app's user interface.",
+          breadcrumbs: ["SwiftUI", "Views"],
+          tags: ["Swift"],
+          type: "documentation"
+        )
+      ]
+    )
+    let json = try AppleDocsActions.encodeSearchResponse(response)
+    let output = AppleDocsClient.SearchOutput(
+      formatted: AppleDocsActions.formatSearchResponse(response),
+      json: json
+    )
+
+    let decoded = try #require(output.response)
+    #expect(decoded.query == "SwiftUI View")
+    #expect(decoded.results.count == 1)
+    #expect(decoded.results[0].title == "View")
+    #expect(decoded.results[0].breadcrumbs == ["SwiftUI", "Views"])
+  }
+
   @Test("Skips results without title or href")
   func skipResultsWithoutTitleOrHref() throws {
     let html = """

@@ -32,6 +32,10 @@ public struct AppleDocsClient: Sendable {
     public let formatted: String
     public let json: String
 
+    public var response: SearchResponse? {
+      try? JSONDecoder().decode(SearchResponse.self, from: Data(json.utf8))
+    }
+
     public init(formatted: String, json: String) {
       self.formatted = formatted
       self.json = json
@@ -201,38 +205,35 @@ public enum AppleDocsActions {
 
   public typealias SearchOutput = AppleDocsClient.SearchOutput
 
-  public static func search(query: String) async throws -> SearchOutput {
-    let response = try await AppleDocsSearcher.search(query: query)
-
-    if response.results.isEmpty {
-      return SearchOutput(
-        formatted: "No results found for '\(query)'",
-        json: "{}"
-      )
+  static func formatSearchResponse(_ response: SearchResponse) -> String {
+    guard !response.results.isEmpty else {
+      return "No results found for \"\(response.query)\""
     }
 
-    var text = "Found \(response.results.count) results for '\(query)':\n\n"
-    for (i, result) in response.results.enumerated() {
-      text += "\(i + 1). **\(result.title)**\n"
-      text += "   URL: \(result.url)\n"
-      if !result.description.isEmpty {
-        text += "   \(result.description)\n"
-      }
-      if !result.breadcrumbs.isEmpty {
-        text += "   Path: \(result.breadcrumbs.joined(separator: " > "))\n"
-      }
-      if !result.tags.isEmpty {
-        text += "   Tags: \(result.tags.joined(separator: ", "))\n"
-      }
-      text += "\n"
-    }
+    let summary = response.results.enumerated().map { index, result in
+      """
+      \(index + 1). \(result.title)
+         \(result.url)
+         \(result.description.isEmpty ? "No description" : result.description)
+      """
+    }.joined(separator: "\n\n")
 
+    return "Found \(response.results.count) result(s) for \"\(response.query)\":\n\n\(summary)"
+  }
+
+  static func encodeSearchResponse(_ response: SearchResponse) throws -> String {
     let encoder = JSONEncoder()
     encoder.outputFormatting = .prettyPrinted
     let jsonData = try encoder.encode(response)
-    let jsonString = String(data: jsonData, encoding: .utf8) ?? "{}"
+    return String(data: jsonData, encoding: .utf8) ?? "{}"
+  }
 
-    return SearchOutput(formatted: text, json: jsonString)
+  public static func search(query: String) async throws -> SearchOutput {
+    let response = try await AppleDocsSearcher.search(query: query)
+    let formatted = formatSearchResponse(response)
+    let json = try encodeSearchResponse(response)
+
+    return SearchOutput(formatted: formatted, json: json)
   }
 
   public static func fetch(path: String) async throws -> String {

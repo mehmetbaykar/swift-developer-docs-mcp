@@ -131,7 +131,10 @@ struct CLIParsingTests {
         fetch: { _ in "" },
         search: { query in
           capturedQuery = query
-          return .init(formatted: "No results found for '\(query)'", json: "{}")
+          return .init(
+            formatted: "No results found for \"\(query)\"",
+            json: "{\"query\":\"\\(query)\",\"results\":[]}"
+          )
         },
         fetchHIG: { _ in "" },
         fetchHIGTableOfContents: { "" },
