@@ -204,9 +204,11 @@ Documentation endpoints return `text/markdown` by default. Set `Accept: applicat
 
 ---
 
-### MCP Server (Claude Code)
+### MCP Server
 
-Add it as an MCP server in Claude Code and four tools become available automatically — `searchAppleDocumentation`, `fetchAppleDocumentation`, `fetchExternalDocumentation`, and `fetchAppleVideoTranscript`:
+Add it as an MCP server and four tools become available automatically — `searchAppleDocumentation`, `fetchAppleDocumentation`, `fetchExternalDocumentation`, and `fetchAppleVideoTranscript`.
+
+#### Claude Code
 
 ```bash
 claude mcp add apple-docs -- npx -y @mehmetbaykar/swift-developer-docs-mcp
@@ -226,7 +228,7 @@ Or add it to your `.claude/settings.json`:
 ```
 
 <details>
-<summary>Using a local build</summary>
+<summary>Using a local build in Claude Code</summary>
 
 ```bash
 claude mcp add apple-docs -- /absolute/path/to/.build/debug/swift-developer-docs-mcp
@@ -246,7 +248,35 @@ Or in `.claude/settings.json`:
 
 </details>
 
-Claude can then use the MCP tools directly when you ask things like:
+#### Codex
+
+Add it to Codex with the verified local CLI syntax:
+
+```bash
+codex mcp add apple-docs -- npx -y @mehmetbaykar/swift-developer-docs-mcp
+```
+
+Use a local build instead of `npx`:
+
+```bash
+codex mcp add apple-docs -- /absolute/path/to/.build/debug/swift-developer-docs-mcp
+```
+
+Codex can also connect to the HTTP MCP endpoint exposed by `serve`:
+
+```bash
+npx @mehmetbaykar/swift-developer-docs-mcp serve --port 8080
+codex mcp add apple-docs-http --url http://127.0.0.1:8080/mcp
+```
+
+Helpful Codex MCP commands:
+
+```bash
+codex mcp list
+codex mcp get apple-docs
+```
+
+Claude Code and Codex can then use the MCP tools directly when you ask things like:
 
 - "Search for SwiftUI View documentation"
 - "Fetch the docs for swift/array"
