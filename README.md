@@ -269,14 +269,53 @@ npx @mehmetbaykar/swift-developer-docs-mcp serve --port 8080
 codex mcp add apple-docs-http --url http://127.0.0.1:8080/mcp
 ```
 
-Helpful Codex MCP commands:
+Codex config file examples (`~/.codex/config.toml` or `.codex/config.toml`):
+
+```toml
+[mcp_servers.apple-docs]
+command = "npx"
+args = ["-y", "@mehmetbaykar/swift-developer-docs-mcp"]
+```
+
+```toml
+[mcp_servers.apple-docs-http]
+url = "http://127.0.0.1:8080/mcp"
+```
+
+#### Cursor
+
+Cursor uses `~/.cursor/mcp.json` or project-local `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "apple-docs": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@mehmetbaykar/swift-developer-docs-mcp"]
+    }
+  }
+}
+```
+
+```json
+{
+  "mcpServers": {
+    "apple-docs-http": {
+      "url": "http://127.0.0.1:8080/mcp"
+    }
+  }
+}
+```
+
+Helpful Codex commands:
 
 ```bash
 codex mcp list
 codex mcp get apple-docs
 ```
 
-Claude Code and Codex can then use the MCP tools directly when you ask things like:
+Claude Code, Codex, and Cursor can then use the MCP tools directly when you ask things like:
 
 - "Search for SwiftUI View documentation"
 - "Fetch the docs for swift/array"
