@@ -28,7 +28,14 @@ struct ServeCommand: CLICommand {
           Foundation.exit(1)
         }
       default:
-        i += 1
+        if arguments[i].hasPrefix("--") {
+          printToStdErr("Error: unknown option \(arguments[i])")
+          printToStdErr("Usage: \(usage)")
+          Foundation.exit(1)
+        }
+        printToStdErr("Error: unexpected argument \(arguments[i])")
+        printToStdErr("Usage: \(usage)")
+        Foundation.exit(1)
       }
     }
 

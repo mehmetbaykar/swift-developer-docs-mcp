@@ -57,6 +57,7 @@ public struct ContentItem: Codable, Sendable {
   public let content: [ContentItem]?
   public let inlineContent: [ContentItem]?
   public let items: [ContentItem]?
+  public let itemIdentifiers: [String]?
   public let code: CodeValue?
   public let syntax: String?
   public let level: Int?
@@ -83,7 +84,8 @@ public struct ContentItem: Codable, Sendable {
   public init(
     text: String? = nil, type: String? = nil, title: String? = nil, name: String? = nil,
     tokens: [Token]? = nil, content: [ContentItem]? = nil, inlineContent: [ContentItem]? = nil,
-    items: [ContentItem]? = nil, code: CodeValue? = nil, syntax: String? = nil,
+    items: [ContentItem]? = nil, itemIdentifiers: [String]? = nil, code: CodeValue? = nil,
+    syntax: String? = nil,
     level: Int? = nil, style: String? = nil, identifier: String? = nil,
     identifiers: [String]? = nil, url: String? = nil, abstract: [TextFragment]? = nil,
     role: String? = nil, kind: String? = nil, fragments: [FragmentItem]? = nil,
@@ -100,6 +102,7 @@ public struct ContentItem: Codable, Sendable {
     self.content = content
     self.inlineContent = inlineContent
     self.items = items
+    self.itemIdentifiers = itemIdentifiers
     self.code = code
     self.syntax = syntax
     self.level = level
@@ -119,6 +122,115 @@ public struct ContentItem: Codable, Sendable {
     self.destination = destination
     self.overridingSymbol = overridingSymbol
     self.extendedModule = extendedModule
+  }
+
+  enum CodingKeys: String, CodingKey {
+    case text
+    case type
+    case title
+    case name
+    case tokens
+    case content
+    case inlineContent
+    case items
+    case code
+    case syntax
+    case level
+    case style
+    case identifier
+    case identifiers
+    case url
+    case abstract
+    case role
+    case kind
+    case fragments
+    case conformance
+    case header
+    case rows
+    case alt
+    case variants
+    case destination
+    case overridingSymbol
+    case extendedModule
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+
+    self.text = try container.decodeIfPresent(String.self, forKey: .text)
+    self.type = try container.decodeIfPresent(String.self, forKey: .type)
+    self.title = try container.decodeIfPresent(String.self, forKey: .title)
+    self.name = try container.decodeIfPresent(String.self, forKey: .name)
+    self.tokens = try container.decodeIfPresent([Token].self, forKey: .tokens)
+    self.content = try container.decodeIfPresent([ContentItem].self, forKey: .content)
+    self.inlineContent = try container.decodeIfPresent([ContentItem].self, forKey: .inlineContent)
+
+    if let decodedItems = try? container.decode([ContentItem].self, forKey: .items) {
+      self.items = decodedItems
+      self.itemIdentifiers = nil
+    } else if let decodedIdentifiers = try? container.decode([String].self, forKey: .items) {
+      self.items = nil
+      self.itemIdentifiers = decodedIdentifiers
+    } else {
+      self.items = nil
+      self.itemIdentifiers = nil
+    }
+
+    self.code = try container.decodeIfPresent(CodeValue.self, forKey: .code)
+    self.syntax = try container.decodeIfPresent(String.self, forKey: .syntax)
+    self.level = try container.decodeIfPresent(Int.self, forKey: .level)
+    self.style = try container.decodeIfPresent(String.self, forKey: .style)
+    self.identifier = try container.decodeIfPresent(String.self, forKey: .identifier)
+    self.identifiers = try container.decodeIfPresent([String].self, forKey: .identifiers)
+    self.url = try container.decodeIfPresent(String.self, forKey: .url)
+    self.abstract = try container.decodeIfPresent([TextFragment].self, forKey: .abstract)
+    self.role = try container.decodeIfPresent(String.self, forKey: .role)
+    self.kind = try container.decodeIfPresent(String.self, forKey: .kind)
+    self.fragments = try container.decodeIfPresent([FragmentItem].self, forKey: .fragments)
+    self.conformance = try container.decodeIfPresent(ConformanceInfo.self, forKey: .conformance)
+    self.header = try container.decodeIfPresent(String.self, forKey: .header)
+    self.rows = try container.decodeIfPresent([[[ContentItem]]].self, forKey: .rows)
+    self.alt = try container.decodeIfPresent(String.self, forKey: .alt)
+    self.variants = try container.decodeIfPresent([ImageVariantRef].self, forKey: .variants)
+    self.destination = try container.decodeIfPresent(String.self, forKey: .destination)
+    self.overridingSymbol = try container.decodeIfPresent(String.self, forKey: .overridingSymbol)
+    self.extendedModule = try container.decodeIfPresent(String.self, forKey: .extendedModule)
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+
+    try container.encodeIfPresent(text, forKey: .text)
+    try container.encodeIfPresent(type, forKey: .type)
+    try container.encodeIfPresent(title, forKey: .title)
+    try container.encodeIfPresent(name, forKey: .name)
+    try container.encodeIfPresent(tokens, forKey: .tokens)
+    try container.encodeIfPresent(content, forKey: .content)
+    try container.encodeIfPresent(inlineContent, forKey: .inlineContent)
+    if let items {
+      try container.encode(items, forKey: .items)
+    } else {
+      try container.encodeIfPresent(itemIdentifiers, forKey: .items)
+    }
+    try container.encodeIfPresent(code, forKey: .code)
+    try container.encodeIfPresent(syntax, forKey: .syntax)
+    try container.encodeIfPresent(level, forKey: .level)
+    try container.encodeIfPresent(style, forKey: .style)
+    try container.encodeIfPresent(identifier, forKey: .identifier)
+    try container.encodeIfPresent(identifiers, forKey: .identifiers)
+    try container.encodeIfPresent(url, forKey: .url)
+    try container.encodeIfPresent(abstract, forKey: .abstract)
+    try container.encodeIfPresent(role, forKey: .role)
+    try container.encodeIfPresent(kind, forKey: .kind)
+    try container.encodeIfPresent(fragments, forKey: .fragments)
+    try container.encodeIfPresent(conformance, forKey: .conformance)
+    try container.encodeIfPresent(header, forKey: .header)
+    try container.encodeIfPresent(rows, forKey: .rows)
+    try container.encodeIfPresent(alt, forKey: .alt)
+    try container.encodeIfPresent(variants, forKey: .variants)
+    try container.encodeIfPresent(destination, forKey: .destination)
+    try container.encodeIfPresent(overridingSymbol, forKey: .overridingSymbol)
+    try container.encodeIfPresent(extendedModule, forKey: .extendedModule)
   }
 }
 

@@ -61,12 +61,20 @@ struct ServerApp {
       )
     }
 
+    router.get("/bot") { _, _ -> Response in
+      Response(
+        status: .found,
+        headers: [.location: "/#bot"]
+      )
+    }
+
     router.get("/search") { request, _ -> Response in
       let query = request.uri.queryParameters.get("q") ?? ""
       let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
 
       guard !trimmedQuery.isEmpty else {
         return errorResponse(
+          request: request,
           status: .badRequest,
           message: "Missing search query. Provide ?q=..."
         )
@@ -96,17 +104,25 @@ struct ServerApp {
         )
       } catch {
         return errorResponse(
+          request: request,
           status: .internalServerError,
           message: "Search failed: \(error.localizedDescription)"
         )
       }
     }
 
-    router.get("/documentation/{path+}") { request, context -> Response in
-      let path = context.parameters.get("path") ?? ""
+    router.get("/documentation/**") { request, _ -> Response in
+      let prefix = "/documentation/"
+      let path =
+        request.uri.path.hasPrefix(prefix)
+        ? String(request.uri.path.dropFirst(prefix.count)) : ""
 
       guard !path.isEmpty else {
-        return errorResponse(status: .badRequest, message: "Invalid documentation path")
+        return errorResponse(
+          request: request,
+          status: .badRequest,
+          message: "Invalid documentation path"
+        )
       }
 
       do {
@@ -121,7 +137,7 @@ struct ServerApp {
           request: request
         )
       } catch {
-        return handleFetchError(error, path: "/documentation/\(path)")
+        return handleFetchError(error, path: "/documentation/\(path)", request: request)
       }
     }
 
@@ -134,15 +150,22 @@ struct ServerApp {
           request: request
         )
       } catch {
-        return handleFetchError(error, path: "/design/human-interface-guidelines")
+        return handleFetchError(
+          error,
+          path: "/design/human-interface-guidelines",
+          request: request
+        )
       }
     }
 
-    router.get("/design/human-interface-guidelines/{path+}") { request, context -> Response in
-      let higPath = context.parameters.get("path") ?? ""
+    router.get("/design/human-interface-guidelines/**") { request, _ -> Response in
+      let prefix = "/design/human-interface-guidelines/"
+      let higPath =
+        request.uri.path.hasPrefix(prefix)
+        ? String(request.uri.path.dropFirst(prefix.count)) : ""
 
       guard !higPath.isEmpty else {
-        return errorResponse(status: .badRequest, message: "Invalid HIG path")
+        return errorResponse(request: request, status: .badRequest, message: "Invalid HIG path")
       }
 
       do {
@@ -158,7 +181,8 @@ struct ServerApp {
       } catch {
         return handleFetchError(
           error,
-          path: "/design/human-interface-guidelines/\(higPath)"
+          path: "/design/human-interface-guidelines/\(higPath)",
+          request: request
         )
       }
     }
@@ -169,6 +193,7 @@ struct ServerApp {
 
       guard !collection.isEmpty, !videoID.isEmpty else {
         return errorResponse(
+          request: request,
           status: .badRequest,
           message: "Invalid video path. Supported format: /videos/play/COLLECTION/VIDEO_ID"
         )
@@ -187,17 +212,19 @@ struct ServerApp {
       } catch {
         return handleFetchError(
           error,
-          path: "/videos/play/\(collection)/\(videoID)"
+          path: "/videos/play/\(collection)/\(videoID)",
+          request: request
         )
       }
     }
 
-    router.get("/external/{path+}") { request, _ -> Response in
+    router.get("/external/**") { request, _ -> Response in
       let targetURL: String
       do {
         targetURL = try ExternalPolicy.decodeExternalTargetPath(request.uri.path)
       } catch {
-        return errorResponse(status: .badRequest, message: "Invalid external path")
+        return errorResponse(
+          request: request, status: .badRequest, message: "Invalid external path")
       }
 
       do {
@@ -208,7 +235,7 @@ struct ServerApp {
           request: request
         )
       } catch {
-        return handleExternalError(error, url: targetURL)
+        return handleExternalError(error, url: targetURL, request: request)
       }
     }
 
@@ -230,9 +257,55 @@ struct ServerApp {
     router.patch("/mcp") { request, _ -> Response in
       await mcpResponse(for: request)
     }
+    router.on("/mcp", method: .options) { request, _ -> Response in
+      await mcpResponse(for: request)
+    }
 
-    router.get("/{path+}") { _, _ -> Response in
+    router.get("/**") { request, _ -> Response in
       errorResponse(
+        request: request,
+        status: .notFound,
+        message: "The requested resource was not found on this server."
+      )
+    }
+    router.head("/**") { request, _ -> Response in
+      errorResponse(
+        request: request,
+        status: .notFound,
+        message: "The requested resource was not found on this server."
+      )
+    }
+    router.post("/**") { request, _ -> Response in
+      errorResponse(
+        request: request,
+        status: .notFound,
+        message: "The requested resource was not found on this server."
+      )
+    }
+    router.put("/**") { request, _ -> Response in
+      errorResponse(
+        request: request,
+        status: .notFound,
+        message: "The requested resource was not found on this server."
+      )
+    }
+    router.patch("/**") { request, _ -> Response in
+      errorResponse(
+        request: request,
+        status: .notFound,
+        message: "The requested resource was not found on this server."
+      )
+    }
+    router.delete("/**") { request, _ -> Response in
+      errorResponse(
+        request: request,
+        status: .notFound,
+        message: "The requested resource was not found on this server."
+      )
+    }
+    router.on("/**", method: .options) { request, _ -> Response in
+      errorResponse(
+        request: request,
         status: .notFound,
         message: "The requested resource was not found on this server."
       )
@@ -310,6 +383,7 @@ struct ServerApp {
       return ServerApp.response(from: bridgeResponse)
     } catch {
       return errorResponse(
+        request: request,
         status: .badRequest,
         message: "Invalid MCP request body: \(error.localizedDescription)"
       )
@@ -335,21 +409,24 @@ struct ServerApp {
     )
   }
 
-  private func handleFetchError(_ error: Error, path: String) -> Response {
+  private func handleFetchError(_ error: Error, path: String, request: Request) -> Response {
     if let docsError = error as? AppleDocsError {
       switch docsError {
       case .notFound:
         return errorResponse(
+          request: request,
           status: .notFound,
           message: "The requested documentation page does not exist: \(path)"
         )
       case .insufficientContent:
         return errorResponse(
+          request: request,
           status: .badGateway,
           message: "The documentation page loaded but contained insufficient content."
         )
       case .invalidPath, .invalidURL:
         return errorResponse(
+          request: request,
           status: .badRequest,
           message: docsError.localizedDescription
         )
@@ -359,27 +436,31 @@ struct ServerApp {
     }
 
     return errorResponse(
+      request: request,
       status: .internalServerError,
       message: "Error fetching content: \(error.localizedDescription)"
     )
   }
 
-  private func handleExternalError(_ error: Error, url: String) -> Response {
+  private func handleExternalError(_ error: Error, url: String, request: Request) -> Response {
     if let docsError = error as? AppleDocsError {
       switch docsError {
       case .accessDenied, .ssrfBlocked:
         return errorResponse(
+          request: request,
           status: .forbidden,
           message:
             "External documentation access denied for \(url): \(docsError.localizedDescription)"
         )
       case .robotsBlocked:
         return errorResponse(
+          request: request,
           status: .forbidden,
           message: "Blocked by robots.txt for \(url)"
         )
       case .notFound:
         return errorResponse(
+          request: request,
           status: .notFound,
           message: "External documentation not found: \(url)"
         )
@@ -388,7 +469,7 @@ struct ServerApp {
       }
     }
 
-    return handleFetchError(error, path: "/external/\(url)")
+    return handleFetchError(error, path: "/external/\(url)", request: request)
   }
 
   private func generateETag(_ content: String) -> String {
@@ -641,7 +722,12 @@ struct ServerApp {
     """
 }
 
-private func errorResponse(status: HTTPResponse.Status, message: String) -> Response {
+private func errorResponse(
+  request: Request? = nil,
+  status: HTTPResponse.Status,
+  message: String
+) -> Response {
+  let wantsJSON = request?.headers[.accept]?.contains("application/json") == true
   let title: String =
     switch status.code {
     case 400: "Bad Request"
@@ -661,8 +747,21 @@ private func errorResponse(status: HTTPResponse.Status, message: String) -> Resp
     \(message)
 
     ---
-    *[swift-developer-docs-mcp](https://github.com/mehmetbaykar/swift-developer-docs-mcp)*
+      *[swift-developer-docs-mcp](https://github.com/mehmetbaykar/swift-developer-docs-mcp)*
     """
+
+  if wantsJSON {
+    let payload = ["error": title, "message": message]
+    let data = (try? JSONEncoder().encode(payload)) ?? Data(#"{"error":"Error"}"#.utf8)
+    var buffer = ByteBufferAllocator().buffer(capacity: data.count)
+    buffer.writeBytes(data)
+
+    return Response(
+      status: status,
+      headers: [.contentType: "application/json; charset=utf-8"],
+      body: .init(byteBuffer: buffer)
+    )
+  }
 
   return Response(
     status: status,

@@ -137,6 +137,41 @@ struct HIGTypesTests {
       #expect(decoded.interfaceLanguages.swift.count == 1)
       #expect(decoded.schemaVersion.major == 1)
     }
+
+    @Test("Decodes icon references with null alt text")
+    func decodeIconReferenceWithNullAlt() throws {
+      let json = """
+        {
+          "includedArchiveIdentifiers": ["com.apple.hig"],
+          "interfaceLanguages": {
+            "swift": []
+          },
+          "references": {
+            "inclusion.svg": {
+              "alt": null,
+              "identifier": "inclusion.svg",
+              "type": "image",
+              "variants": [
+                {
+                  "traits": ["svg"],
+                  "url": "https://developer.apple.com/assets/elements/icons/inclusion.svg"
+                }
+              ]
+            }
+          },
+          "schemaVersion": {
+            "major": 0,
+            "minor": 3,
+            "patch": 0
+          }
+        }
+        """
+      let data = Data(json.utf8)
+      let toc = try JSONDecoder().decode(HIGTableOfContents.self, from: data)
+
+      #expect(toc.references["inclusion.svg"]?.alt == nil)
+      #expect(toc.references["inclusion.svg"]?.identifier == "inclusion.svg")
+    }
   }
 
   // MARK: - HIGPageJSON
@@ -180,6 +215,29 @@ struct HIGTypesTests {
       #expect(page.identifier.url == "/design/human-interface-guidelines/color")
       #expect(page.abstract.first?.text == "Use color wisely.")
       #expect(page.topicSections == nil)
+    }
+
+    @Test("Decodes links content items with string identifiers")
+    func decodeLinksContentItemIdentifiers() throws {
+      let json = """
+        {
+          "type": "links",
+          "style": "compactGrid",
+          "items": [
+            "doc://com.apple.documentation/documentation/swift/array"
+          ]
+        }
+        """
+
+      let data = Data(json.utf8)
+      let item = try JSONDecoder().decode(ContentItem.self, from: data)
+
+      #expect(item.type == "links")
+      #expect(item.style == "compactGrid")
+      #expect(item.items == nil)
+      #expect(
+        item.itemIdentifiers
+          == ["doc://com.apple.documentation/documentation/swift/array"])
     }
 
     @Test("Decodes from hig-color fixture")

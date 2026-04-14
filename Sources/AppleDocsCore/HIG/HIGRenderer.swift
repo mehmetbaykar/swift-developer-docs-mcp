@@ -170,35 +170,7 @@ public struct HIGRenderer: Sendable {
     var markdown = ""
 
     for item in sections {
-      if item.type == "links",
-        let items = item.items,
-        item.style == "compactGrid"
-      {
-        for linkItem in items {
-          if let linkId = linkItem.identifier ?? linkItem.text {
-            if let refItem = references[linkId] {
-              switch refItem {
-              case .topic(let ref):
-                markdown += "- [\(ref.title)](\(ref.url))"
-                if let abstract = ref.abstract {
-                  let text = abstract.compactMap { $0.text }.joined()
-                  if !text.isEmpty {
-                    markdown += " - \(text)"
-                  }
-                }
-                markdown += "\n"
-              case .external(let ref):
-                markdown += "- [\(ref.title)](\(ref.url))\n"
-              case .image:
-                break
-              }
-            }
-          }
-        }
-        markdown += "\n"
-      } else {
-        markdown += Self.renderContentItem(item, references: references)
-      }
+      markdown += Self.renderContentItem(item, references: references)
     }
 
     return markdown
@@ -255,6 +227,9 @@ public struct HIGRenderer: Sendable {
         markdown += "\n"
       }
 
+    case "links":
+      markdown += Self.renderHIGLinks(item, references: references)
+
     case "table":
       markdown += Self.renderHIGTable(item, references: references)
 
@@ -272,6 +247,41 @@ public struct HIGRenderer: Sendable {
     }
 
     return markdown
+  }
+
+  static func renderHIGLinks(
+    _ item: ContentItem,
+    references: [String: HIGReferenceItem]
+  ) -> String {
+    let linkIdentifiers =
+      item.identifiers
+      ?? item.itemIdentifiers
+      ?? item.items?.compactMap { $0.identifier ?? $0.text }
+
+    guard let linkIdentifiers, !linkIdentifiers.isEmpty else { return "" }
+
+    var markdown = ""
+    for linkId in linkIdentifiers {
+      guard let refItem = references[linkId] else { continue }
+
+      switch refItem {
+      case .topic(let ref):
+        markdown += "- [\(ref.title)](\(ref.url))"
+        if let abstract = ref.abstract {
+          let text = abstract.compactMap(\.text).joined()
+          if !text.isEmpty {
+            markdown += " - \(text)"
+          }
+        }
+        markdown += "\n"
+      case .external(let ref):
+        markdown += "- [\(ref.title)](\(ref.url))\n"
+      case .image:
+        continue
+      }
+    }
+
+    return markdown.isEmpty ? "" : "\(markdown)\n"
   }
 
   // MARK: - Table rendering

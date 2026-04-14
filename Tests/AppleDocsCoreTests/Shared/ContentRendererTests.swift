@@ -441,6 +441,73 @@ struct ContentRendererTests {
     }
   }
 
+  @Suite("Property Type Link Rendering")
+  struct PropertyTypeLinkRendering {
+    @Test("Links property types when the identifier is already a documentation path")
+    func linksDocumentationPathPropertyType() {
+      let result = ContentRenderer.renderProperties(
+        [
+          PropertyItem(
+            name: "value",
+            type: [
+              PropertyTypeItem(
+                text: "String",
+                kind: "typeIdentifier",
+                identifier: "/documentation/swift/string"
+              )
+            ]
+          )
+        ],
+        references: nil
+      )
+
+      #expect(result.contains("### `value` *([String](/documentation/swift/string), optional)*"))
+    }
+
+    @Test("Does not link unsupported property identifier schemes")
+    func skipsUnsupportedPropertyTypeLinks() {
+      let result = ContentRenderer.renderProperties(
+        [
+          PropertyItem(
+            name: "value",
+            type: [
+              PropertyTypeItem(
+                text: "String",
+                kind: "typeIdentifier",
+                identifier: "custom://example/string"
+              )
+            ]
+          )
+        ],
+        references: nil
+      )
+
+      #expect(result.contains("### `value` *(String, optional)*"))
+      #expect(!result.contains("[String](custom://example/string)"))
+    }
+  }
+
+  @Suite("Links Rendering")
+  struct LinksRendering {
+    @Test("Renders links blocks backed by string identifiers")
+    func rendersStringBackedIdentifiers() throws {
+      let json = """
+        {
+          "type": "links",
+          "items": [
+            "doc://com.apple.Swift/documentation/Swift/Array"
+          ]
+        }
+        """
+
+      let item = try JSONDecoder().decode(ContentItem.self, from: Data(json.utf8))
+      let result = ContentRenderer.renderContentArray([item], references: nil)
+
+      #expect(item.itemIdentifiers == ["doc://com.apple.Swift/documentation/Swift/Array"])
+      #expect(result.contains("- [Array](/documentation/Swift/Array)"))
+    }
+  }
+
   // MARK: - mapAsideStyleToCallout
 
   @Suite("Aside Style Mapping")

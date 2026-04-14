@@ -14,7 +14,7 @@ struct ExternalRendererTests {
         "/documentation/MyLib/MyType",
         externalOrigin: "https://example.com"
       )
-      #expect(result == "/external/example.com/documentation/MyLib/MyType")
+      #expect(result == "/external/https://example.com/documentation/MyLib/MyType")
     }
 
     @Test("Rewrites tutorials paths to external links")
@@ -23,7 +23,7 @@ struct ExternalRendererTests {
         "/tutorials/MyLib/GettingStarted",
         externalOrigin: "https://example.com"
       )
-      #expect(result == "/external/example.com/tutorials/MyLib/GettingStarted")
+      #expect(result == "/external/https://example.com/tutorials/MyLib/GettingStarted")
     }
 
     @Test("Preserves non-documentation paths")
@@ -41,7 +41,7 @@ struct ExternalRendererTests {
         "/documentation/MyLib/MyType",
         externalOrigin: "https://example.com/api/v1"
       )
-      #expect(result == "/external/example.com/api/v1/documentation/MyLib/MyType")
+      #expect(result == "/external/https://example.com/api/v1/documentation/MyLib/MyType")
     }
 
     @Test("Handles empty external origin")
@@ -63,7 +63,7 @@ struct ExternalRendererTests {
         references: nil,
         externalOrigin: "https://example.com"
       )
-      #expect(result == "/external/example.com/documentation/TestLib/MyType")
+      #expect(result == "/external/https://example.com/documentation/TestLib/MyType")
     }
 
     @Test("Uses reference URL when available")
@@ -76,7 +76,7 @@ struct ExternalRendererTests {
         references: refs,
         externalOrigin: "https://example.com"
       )
-      #expect(result == "/external/example.com/documentation/TestLib/MyType")
+      #expect(result == "/external/https://example.com/documentation/TestLib/MyType")
     }
 
     @Test("Falls back to identifier for non-doc:// scheme")
@@ -124,7 +124,7 @@ struct ExternalRendererTests {
       let result = ExternalRenderer.renderExternalDocumentation(
         jsonData: jsonData, sourceUrl: sourceUrl)
 
-      #expect(result.contains("/external/example.com/documentation/TestLib/RelatedType"))
+      #expect(result.contains("/external/https://example.com/documentation/TestLib/RelatedType"))
     }
 
     @Test("Renders minimal external document")

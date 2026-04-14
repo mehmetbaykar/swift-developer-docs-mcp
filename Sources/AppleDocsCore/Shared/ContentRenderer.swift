@@ -291,7 +291,7 @@ public struct ContentRenderer: Sendable {
     _ item: ContentItem, references: [String: ContentItem]?,
     externalOrigin: String?
   ) -> String {
-    guard let identifiers = item.identifiers else { return "" }
+    guard let identifiers = item.identifiers ?? item.itemIdentifiers else { return "" }
 
     let markdown = identifiers.map { identifier in
       let title = extractTitleFromIdentifier(identifier)
@@ -463,10 +463,22 @@ public struct ContentRenderer: Sendable {
       if part.kind == "typeIdentifier", let identifier = part.identifier, let text = part.text {
         let url = convertIdentifierToURL(
           identifier, references: references, externalOrigin: externalOrigin)
-        return url != identifier ? "[\(text)](\(url))" : text
+        return shouldLinkPropertyType(url, originalIdentifier: identifier)
+          ? "[\(text)](\(url))" : text
       }
       return part.text ?? ""
     }.joined().trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  private static func shouldLinkPropertyType(
+    _ url: String,
+    originalIdentifier: String
+  ) -> Bool {
+    if url.hasPrefix("/") || url.hasPrefix("https://") || url.hasPrefix("http://") {
+      return true
+    }
+
+    return originalIdentifier.hasPrefix("doc://") && url != originalIdentifier
   }
 
   // MARK: - Relationships Rendering
@@ -540,7 +552,9 @@ public struct ContentRenderer: Sendable {
     guard path.hasPrefix("/documentation/") || path.hasPrefix("/tutorials/") else {
       return path
     }
-    return "/external/\(externalOrigin)\(path)"
+    let normalizedOrigin = externalOrigin.replacingOccurrences(
+      of: #"/+$"#, with: "", options: .regularExpression)
+    return "/external/\(normalizedOrigin)\(path)"
   }
 
   public static func extractTitleFromIdentifier(_ identifier: String) -> String {

@@ -21,22 +21,22 @@ public enum ExternalRenderer: Sendable {
       return ""
     }
 
-    let encodedOriginBase: String
+    let externalOrigin: String
     do {
       let basePath = try ExternalFetcher.extractExternalDocumentationBasePath(pageURL)
-      encodedOriginBase = "\(pageURL.host ?? "")\(basePath)"
+      externalOrigin = buildExternalOrigin(pageURL: pageURL, basePath: basePath)
     } catch {
-      encodedOriginBase = ""
+      externalOrigin = ""
     }
 
-    let externalOriginOpt = encodedOriginBase.isEmpty ? nil : encodedOriginBase
+    let externalOriginOpt = externalOrigin.isEmpty ? nil : externalOrigin
 
     var markdown = ""
 
     markdown += generateFrontMatter(jsonData, sourceURL: sourceURL)
 
     let breadcrumbs = generateBreadcrumbsExternal(
-      sourceURL: sourceURL, encodedOriginBase: encodedOriginBase)
+      sourceURL: sourceURL, externalOrigin: externalOrigin)
     if !breadcrumbs.isEmpty {
       markdown += breadcrumbs
     }
@@ -165,7 +165,7 @@ public enum ExternalRenderer: Sendable {
   }
 
   /// Breadcrumbs using `documentation` segment index (works for hosted DocC paths with a site prefix).
-  static func generateBreadcrumbsExternal(sourceURL: String, encodedOriginBase: String) -> String {
+  static func generateBreadcrumbsExternal(sourceURL: String, externalOrigin: String) -> String {
     guard let url = URL(string: sourceURL) else { return "" }
     let pathParts = url.path.split(separator: "/").map(String.init)
     guard let docIndex = pathParts.firstIndex(of: "documentation"),
@@ -177,7 +177,7 @@ public enum ExternalRenderer: Sendable {
       framework.prefix(1).uppercased() + framework.dropFirst()
     let firstPath = "/documentation/\(framework)"
     let firstLink = ContentRenderer.rewriteDocumentationPath(
-      firstPath, externalOrigin: encodedOriginBase.isEmpty ? nil : encodedOriginBase)
+      firstPath, externalOrigin: externalOrigin.isEmpty ? nil : externalOrigin)
     var breadcrumbs = "**Navigation:** [\(capitalized)](\(firstLink))"
 
     if pathParts.count > docIndex + 2 {
@@ -185,7 +185,7 @@ public enum ExternalRenderer: Sendable {
         let part = pathParts[i]
         let path = "/" + pathParts[docIndex...i].joined(separator: "/")
         let rewritten = ContentRenderer.rewriteDocumentationPath(
-          path, externalOrigin: encodedOriginBase.isEmpty ? nil : encodedOriginBase)
+          path, externalOrigin: externalOrigin.isEmpty ? nil : externalOrigin)
         breadcrumbs += " › [\(part)](\(rewritten))"
       }
     }
@@ -315,17 +315,10 @@ public enum ExternalRenderer: Sendable {
   // MARK: - URL helpers (used by HTTP mirror + tests; encodes host + optional path prefix)
 
   public static func rewriteExternalUrl(_ path: String, externalOrigin: String) -> String {
-    guard !externalOrigin.isEmpty,
-      let url = URL(string: externalOrigin),
-      let host = url.host
-    else {
+    guard !externalOrigin.isEmpty else {
       return path
     }
-    let trimmedBase =
-      url.path
-      .replacingOccurrences(of: #"/+$"#, with: "", options: .regularExpression)
-    let encoded = trimmedBase.isEmpty ? host : "\(host)\(trimmedBase)"
-    return ContentRenderer.rewriteDocumentationPath(path, externalOrigin: encoded)
+    return ContentRenderer.rewriteDocumentationPath(path, externalOrigin: externalOrigin)
   }
 
   public static func convertExternalIdentifierToURL(
@@ -333,17 +326,22 @@ public enum ExternalRenderer: Sendable {
     references: [String: ContentItem]?,
     externalOrigin: String
   ) -> String {
-    guard !externalOrigin.isEmpty,
-      let url = URL(string: externalOrigin),
-      let host = url.host
-    else {
+    guard !externalOrigin.isEmpty else {
       return identifier
     }
-    let trimmedBase =
-      url.path
-      .replacingOccurrences(of: #"/+$"#, with: "", options: .regularExpression)
-    let encoded = trimmedBase.isEmpty ? host : "\(host)\(trimmedBase)"
     return ContentRenderer.convertIdentifierToURL(
-      identifier, references: references, externalOrigin: encoded)
+      identifier, references: references, externalOrigin: externalOrigin)
+  }
+
+  private static func buildExternalOrigin(pageURL: URL, basePath: String) -> String {
+    guard let scheme = pageURL.scheme, let host = pageURL.host else {
+      return ""
+    }
+
+    let portSuffix = pageURL.port.map { ":\($0)" } ?? ""
+    let trimmedBasePath = basePath.replacingOccurrences(
+      of: #"/+$"#, with: "", options: .regularExpression)
+
+    return "\(scheme)://\(host)\(portSuffix)\(trimmedBasePath)"
   }
 }

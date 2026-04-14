@@ -3,13 +3,13 @@ import Foundation
 // MARK: - HIG Icon Reference
 
 public struct HIGIconReference: Codable, Sendable {
-  public let alt: String
+  public let alt: String?
   public let identifier: String
   public let type: String
   public let variants: [HIGIconVariant]
 
   public init(
-    alt: String, identifier: String, type: String = "image", variants: [HIGIconVariant] = []
+    alt: String? = nil, identifier: String, type: String = "image", variants: [HIGIconVariant] = []
   ) {
     self.alt = alt
     self.identifier = identifier

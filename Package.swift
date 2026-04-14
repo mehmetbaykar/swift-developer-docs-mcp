@@ -33,5 +33,13 @@ let package = Package(
       dependencies: ["AppleDocsCore"],
       resources: [.copy("Fixtures")]
     ),
+    .testTarget(
+      name: "SwiftDeveloperDocsMCPTests",
+      dependencies: [
+        "swift-developer-docs-mcp",
+        .product(name: "Hummingbird", package: "hummingbird"),
+        .product(name: "HummingbirdTesting", package: "hummingbird"),
+      ]
+    ),
   ]
 )

@@ -1,13 +1,11 @@
 ---
 name: apple-docs
 description: Search and fetch Apple developer documentation, Human Interface Guidelines, WWDC video transcripts, and external Swift-DocC sites as clean, AI-readable Markdown. Use when any question involves Apple frameworks, APIs, Swift standard library, SwiftUI, UIKit, Foundation, Combine, design guidelines, WWDC sessions, or any Apple platform SDK.
-argument-hint: <query or path>
-allowed-tools: Bash(npx *)
 ---
 
 Search and fetch Apple developer documentation for: $ARGUMENTS
 
-# swift-developer-docs-mcp Skill
+# apple-docs Skill
 
 Use this skill to reliably fetch Apple docs as Markdown when coding agents need precise API details.
 
@@ -32,41 +30,51 @@ Use this skill when the request involves any of the following:
 ### Search
 
 ```bash
-npx -y @mehmetbaykar/swift-developer-docs-mcp search "$ARGUMENTS"
+npx -y -p @mehmetbaykar/swift-developer-docs-mcp \
+  swift-developer-docs-mcp search "$ARGUMENTS"
 ```
 
 ### Apple API Reference
 
 ```bash
-npx -y @mehmetbaykar/swift-developer-docs-mcp fetch swift/array
-npx -y @mehmetbaykar/swift-developer-docs-mcp fetch swiftui/view
+npx -y -p @mehmetbaykar/swift-developer-docs-mcp \
+  swift-developer-docs-mcp fetch swift/array
+npx -y -p @mehmetbaykar/swift-developer-docs-mcp \
+  swift-developer-docs-mcp fetch swiftui/view
 ```
 
 ### Human Interface Guidelines
 
 ```bash
-npx -y @mehmetbaykar/swift-developer-docs-mcp hig
-npx -y @mehmetbaykar/swift-developer-docs-mcp hig foundations/color
+npx -y -p @mehmetbaykar/swift-developer-docs-mcp \
+  swift-developer-docs-mcp hig
+npx -y -p @mehmetbaykar/swift-developer-docs-mcp \
+  swift-developer-docs-mcp hig foundations/color
 ```
 
 ### Apple Video Transcripts
 
 ```bash
-npx -y @mehmetbaykar/swift-developer-docs-mcp video videos/play/wwdc2024/10133
+npx -y -p @mehmetbaykar/swift-developer-docs-mcp \
+  swift-developer-docs-mcp video videos/play/wwdc2024/10133
 ```
 
 ### External Swift-DocC
 
 ```bash
-npx -y @mehmetbaykar/swift-developer-docs-mcp external https://apple.github.io/swift-argument-parser/documentation/argumentparser
+npx -y -p @mehmetbaykar/swift-developer-docs-mcp \
+  swift-developer-docs-mcp external https://apple.github.io/swift-argument-parser/documentation/argumentparser
 ```
 
 ### Auto-routing
 
 ```bash
-npx -y @mehmetbaykar/swift-developer-docs-mcp fetch design/human-interface-guidelines/foundations/color
-npx -y @mehmetbaykar/swift-developer-docs-mcp fetch videos/play/wwdc2024/10133
-npx -y @mehmetbaykar/swift-developer-docs-mcp fetch https://apple.github.io/swift-argument-parser/documentation/argumentparser
+npx -y -p @mehmetbaykar/swift-developer-docs-mcp \
+  swift-developer-docs-mcp fetch design/human-interface-guidelines/foundations/color
+npx -y -p @mehmetbaykar/swift-developer-docs-mcp \
+  swift-developer-docs-mcp fetch videos/play/wwdc2024/10133
+npx -y -p @mehmetbaykar/swift-developer-docs-mcp \
+  swift-developer-docs-mcp fetch https://apple.github.io/swift-argument-parser/documentation/argumentparser
 ```
 
 ## MCP Tools Quick Reference
@@ -86,6 +94,7 @@ Use these when `swift-developer-docs-mcp` is configured as an MCP server, either
 - Fetch targeted symbol pages for coding questions.
 - Keep source links in answers so users can verify details quickly.
 - Use the CLI `fetch` command when you want automatic routing across documentation, HIG, video, and external docs.
+- Prefer `npx -p ... swift-developer-docs-mcp ...` over the shorthand `npx <package> ...` form so the binary is invoked explicitly.
 
 ## Troubleshooting
 

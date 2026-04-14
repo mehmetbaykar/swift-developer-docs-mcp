@@ -9,7 +9,7 @@ struct AppleDocsMCPServer: Sendable {
 
   init(
     name: String = "swift-developer-docs-mcp",
-    version: String = "1.4.2",
+    version: String = "1.4.3",
     title: String = "Swift Apple Developer Docs MCP",
     instructions: String =
       "Search and fetch Apple Developer documentation, Human Interface Guidelines, WWDC video transcripts, and external Swift-DocC content as AI-friendly Markdown."

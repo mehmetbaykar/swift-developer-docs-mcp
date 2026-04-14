@@ -8,6 +8,12 @@ struct ExternalCommand: CLICommand {
   func run(arguments: [String]) async throws {
     let parsed = CLIArgParser.parse(arguments)
 
+    if let option = parsed.unknownOptions.first {
+      printToStdErr("Error: unknown option \(option)")
+      printToStdErr("Usage: \(usage)")
+      Foundation.exit(1)
+    }
+
     guard !parsed.positional.isEmpty else {
       printToStdErr("Error: external requires a URL")
       printToStdErr("Usage: \(usage)")

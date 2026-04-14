@@ -195,6 +195,31 @@ struct HIGRendererTests {
     #expect(result == "[Color](/design/human-interface-guidelines/color)")
   }
 
+  @Test("Renders links blocks backed by identifier strings")
+  func renderStringBackedLinksBlock() {
+    let refs: [String: HIGReferenceItem] = [
+      "doc://com.apple.hig/documentation/HIG/Color": .topic(
+        HIGReference(
+          kind: "article",
+          title: "Color",
+          url: "/design/human-interface-guidelines/color",
+          abstract: [TextFragment(text: "Use color intentionally.", type: "text")],
+          identifier: "doc://com.apple.hig/documentation/HIG/Color"
+        ))
+    ]
+
+    let item = ContentItem(
+      type: "links",
+      itemIdentifiers: ["doc://com.apple.hig/documentation/HIG/Color"],
+      style: "compactGrid"
+    )
+
+    let result = HIGRenderer.renderHIGContent(sections: [item], references: refs)
+
+    #expect(result.contains("- [Color](/design/human-interface-guidelines/color)"))
+    #expect(result.contains("Use color intentionally."))
+  }
+
   // MARK: - Table rendering with rows/header
 
   @Test("Renders table using rows and header fields")
