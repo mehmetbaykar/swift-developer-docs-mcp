@@ -43,6 +43,14 @@ jobs:
           echo "Binary size:"
           ls -lh .build/release/swift-developer-docs-mcp
 
+      - name: Smoke test CLI version flags (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          VERSION=$(grep -o '"version": "[^"]*"' package.json | head -1 | cut -d'"' -f4)
+          test "$(.build/release/swift-developer-docs-mcp --version)" = "$VERSION"
+          test "$(.build/release/swift-developer-docs-mcp -v)" = "$VERSION"
+          test "$(.build/release/swift-developer-docs-mcp version)" = "$VERSION"
+
       - name: Build (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -52,6 +60,14 @@ jobs:
           strip -rSTx .build/release/swift-developer-docs-mcp
           echo "Binary size:"
           ls -lh .build/release/swift-developer-docs-mcp
+
+      - name: Smoke test CLI version flags (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          VERSION=$(grep -o '"version": "[^"]*"' package.json | head -1 | cut -d'"' -f4)
+          test "$(.build/release/swift-developer-docs-mcp --version)" = "$VERSION"
+          test "$(.build/release/swift-developer-docs-mcp -v)" = "$VERSION"
+          test "$(.build/release/swift-developer-docs-mcp version)" = "$VERSION"
 
       - uses: actions/upload-artifact@v7
         with:

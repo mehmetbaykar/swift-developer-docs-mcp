@@ -2,13 +2,16 @@ import Foundation
 
 struct CLIRouter {
   let commands: [CLICommand]
+  let version: String
 
   init(
+    version: String,
     commands: [CLICommand] = [
       SearchCommand(), FetchCommand(), HIGCommand(), VideoCommand(), ExternalCommand(),
       ServeCommand(),
     ]
   ) {
+    self.version = version
     self.commands = commands
   }
 
@@ -21,6 +24,11 @@ struct CLIRouter {
 
     if subcommand == "help" || subcommand == "--help" || subcommand == "-h" {
       printUsage()
+      return true
+    }
+
+    if subcommand == "version" || subcommand == "--version" || subcommand == "-v" {
+      print(version)
       return true
     }
 
@@ -40,6 +48,7 @@ struct CLIRouter {
     for command in commands {
       print("  \(command.usage)")
     }
+    print("  version, --version, -v — Print the current version")
     print()
     print("Run with no arguments to start the MCP server.")
   }

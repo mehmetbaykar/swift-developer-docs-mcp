@@ -4,8 +4,8 @@ import Foundation
 @main
 struct AppleDocsServer {
   static func main() async throws {
-    let router = CLIRouter()
     let mcpServer = AppleDocsMCPServer()
+    let router = CLIRouter(version: mcpServer.version)
 
     if try await router.route(CommandLine.arguments) {
       return

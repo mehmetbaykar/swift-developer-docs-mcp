@@ -47,5 +47,12 @@ jobs:
       - name: Build
         run: swift build
 
+      - name: Smoke test CLI version flags
+        run: |
+          VERSION=$(grep -o '"version": "[^"]*"' package.json | head -1 | cut -d'"' -f4)
+          test "$(swift run swift-developer-docs-mcp --version)" = "$VERSION"
+          test "$(swift run swift-developer-docs-mcp -v)" = "$VERSION"
+          test "$(swift run swift-developer-docs-mcp version)" = "$VERSION"
+
       - name: Test
         run: swift test
