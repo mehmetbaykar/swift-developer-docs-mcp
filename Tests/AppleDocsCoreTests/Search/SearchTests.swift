@@ -6,6 +6,11 @@ import Testing
 @Suite("Search Parser Tests")
 struct SearchTests {
 
+  private let streamedResultsPayload = """
+    {"type":"results","data":[{"devsite":{"metadata":{"description":"SwiftUI is an innovative, exceptionally simple way to build user interfaces across all Apple platforms with the power of Swift.","title":"SwiftUI","sourceURL":"https://developer.apple.com/swiftui/"}}},{"documentation":{"metadata":{"title":"SwiftUI","availability":"iOS 13.0+ | iPadOS 13.0+ | macOS 10.15+","permalink":"https://developer.apple.com/documentation/swiftui","description":"Declare the user interface and behavior for your app on every platform.","hierarchy":"SwiftUI","kind":"symbol"}}},{"developer":{"metadata":{"itemTypes":["Session"],"titles":["SwiftUI Essentials"],"descriptions":["Take your first deep-dive into building an app with SwiftUI."],"permalinks":["https://developer.apple.com/videos/play/wwdc2019/216"],"projectNames":["WWDC19"]}}}]}
+    {"type":"done"}
+    """
+
   private func loadFixture(_ name: String) throws -> String {
     let fixtureURL = Bundle.module.url(
       forResource: name, withExtension: nil, subdirectory: "Fixtures")!
@@ -181,5 +186,26 @@ struct SearchTests {
       """
     let results = try AppleDocsSearcher.parseSearchResults(html: html)
     #expect(results.isEmpty)
+  }
+
+  @Test("Parses streamed search payload from live API shape")
+  func parseSearchEventsFromLivePayload() throws {
+    let results = try AppleDocsSearcher.parseSearchEvents(streamedResultsPayload)
+
+    #expect(results.count == 3)
+    #expect(results[0].title == "SwiftUI")
+    #expect(results[0].url == "https://developer.apple.com/swiftui/")
+    #expect(results[0].type == "general")
+
+    #expect(results[1].title == "SwiftUI")
+    #expect(results[1].url == "https://developer.apple.com/documentation/swiftui")
+    #expect(results[1].type == "documentation")
+    #expect(results[1].breadcrumbs == ["Documentation", "SwiftUI"])
+    #expect(results[1].tags == ["Symbol"])
+
+    #expect(results[2].title == "SwiftUI Essentials")
+    #expect(results[2].url == "https://developer.apple.com/videos/play/wwdc2019/216")
+    #expect(results[2].type == "video")
+    #expect(results[2].tags == ["Session", "WWDC19"])
   }
 }
