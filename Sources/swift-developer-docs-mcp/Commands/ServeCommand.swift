@@ -39,11 +39,7 @@ struct ServeCommand: CLICommand {
       }
     }
 
-    let server = ServerApp(
-      mcpServer: AppleDocsMCPServer(),
-      hostname: hostname,
-      port: port
-    )
+    let server = ServerApp(hostname: hostname, port: port)
     try await server.run()
   }
 }

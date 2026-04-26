@@ -79,11 +79,11 @@ npx -y -p @mehmetbaykar/swift-developer-docs-mcp \
 
 ## MCP Tools Quick Reference
 
-Use these when `swift-developer-docs-mcp` is configured as an MCP server, either over stdio or HTTP (`/mcp`):
+Use these when `swift-developer-docs-mcp` is configured as an MCP server over stdio:
 
 | Tool | Parameters | Use |
 |---|---|---|
-| `searchAppleDocumentation` | `query: string` | Search Apple documentation and return readable text plus native structured MCP output |
+| `searchAppleDocumentation` | `query: string` | Search Apple documentation and return typed structured results |
 | `fetchAppleDocumentation` | `path: string` | Fetch Apple docs, HIG content, video transcripts, or external docs via auto-routing |
 | `fetchAppleVideoTranscript` | `path: string` | Fetch Apple video transcript by `/videos/play/...` path |
 | `fetchExternalDocumentation` | `url: string` | Fetch external Swift-DocC page by absolute HTTPS URL |
@@ -110,5 +110,5 @@ Use these when `swift-developer-docs-mcp` is configured as an MCP server, either
 
 ### Search clients only show text
 
-- `searchAppleDocumentation` now publishes native `structuredContent` and `outputSchema`.
-- Some MCP clients still display only text content, so the tool also keeps a readable summary in the normal content payload.
+- `searchAppleDocumentation` returns a typed structured JSON payload.
+- Some MCP clients display structured payloads as JSON text.

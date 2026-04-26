@@ -198,9 +198,8 @@ npx @mehmetbaykar/swift-developer-docs-mcp serve --port 8080
 | `GET /design/human-interface-guidelines/{path}` | HIG pages |
 | `GET /videos/play/{collection}/{id}` | Video transcripts |
 | `GET /external/{full-https-url}` | External DocC documentation |
-| `GET /mcp`, `POST /mcp`, `DELETE /mcp` | MCP over HTTP |
 
-Documentation endpoints return `text/markdown` by default. Set `Accept: application/json` for JSON. Responses include `ETag`, `Cache-Control`, and `Content-Location` headers. `GET /` returns HTML unless `Accept: text/markdown` is sent.
+Documentation endpoints return `text/markdown` by default. Set `Accept: application/json` for JSON. Responses include `ETag`, `Cache-Control`, and `Content-Location` headers. `GET /` returns HTML unless `Accept: text/markdown` is sent. Run the binary without a subcommand to start the MCP server over stdio.
 
 ---
 
@@ -262,24 +261,12 @@ Use a local build instead of `npx`:
 codex mcp add apple-docs -- /absolute/path/to/.build/debug/swift-developer-docs-mcp
 ```
 
-Codex can also connect to the HTTP MCP endpoint exposed by `serve`:
-
-```bash
-npx @mehmetbaykar/swift-developer-docs-mcp serve --port 8080
-codex mcp add apple-docs-http --url http://127.0.0.1:8080/mcp
-```
-
 Codex config file examples (`~/.codex/config.toml` or `.codex/config.toml`):
 
 ```toml
 [mcp_servers.apple-docs]
 command = "npx"
 args = ["-y", "@mehmetbaykar/swift-developer-docs-mcp"]
-```
-
-```toml
-[mcp_servers.apple-docs-http]
-url = "http://127.0.0.1:8080/mcp"
 ```
 
 #### Cursor
@@ -293,16 +280,6 @@ Cursor uses `~/.cursor/mcp.json` or project-local `.cursor/mcp.json`:
       "type": "stdio",
       "command": "npx",
       "args": ["-y", "@mehmetbaykar/swift-developer-docs-mcp"]
-    }
-  }
-}
-```
-
-```json
-{
-  "mcpServers": {
-    "apple-docs-http": {
-      "url": "http://127.0.0.1:8080/mcp"
     }
   }
 }
@@ -324,7 +301,7 @@ Claude Code, Codex, and Cursor can then use the MCP tools directly when you ask 
 - "Get the WWDC 2024 video transcript for session 10133"
 - "Fetch the swift-argument-parser documentation"
 
-With `swift-fast-mcp` `2.2.0`, `searchAppleDocumentation` now uses native structured MCP output. Clients receive a readable text summary plus typed `structuredContent` published through `outputSchema`.
+With `swift-fast-mcp` `2.4`, tools are authored with the macro-based FastMCP API. `searchAppleDocumentation` returns a typed structured JSON payload containing the query and matching results.
 
 ---
 
@@ -418,7 +395,6 @@ Sources/
       FetchVideoTranscriptTool.swift # fetchAppleVideoTranscript
     Server/
       ServerApp.swift           # Hummingbird routes + llms.txt
-      MCPHTTPBridge.swift       # MCP-over-HTTP bridge using the MCP SDK transports
       SecurityHeadersMiddleware.swift
       CORSMiddleware.swift
       TrailingSlashMiddleware.swift

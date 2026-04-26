@@ -1,5 +1,5 @@
 {
-  "originHash" : "e694dc3895b2eaf095915b1228c2810ef5fa5264407092d183304f3ec08a6fc1",
+  "originHash" : "d6b50e2183919eae751847010a5f1b90083082c457f6d7dec217fc6fa9e27b94",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -26,6 +26,24 @@
       "state" : {
         "revision" : "d1ce7bbd2f1b17f22031ca4c0daeb39eff07a92e",
         "version" : "2.21.1"
+      }
+    },
+    {
+      "identity" : "jsonschema",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/mattt/JSONSchema.git",
+      "state" : {
+        "revision" : "4c6f2467d5bc72b062c7a9b7e4cd77a09635ea8b",
+        "version" : "1.3.1"
+      }
+    },
+    {
+      "identity" : "swift-ai-hub",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/mehmetbaykar/swift-ai-hub",
+      "state" : {
+        "revision" : "2ca9a08d9a1d6ef9e0b40d915e1b837916be95a3",
+        "version" : "0.6.1"
       }
     },
     {
@@ -114,8 +132,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mehmetbaykar/swift-fast-mcp",
       "state" : {
-        "revision" : "b0a02055beaf1a4ffc575db658c8fc12256bbb7f",
-        "version" : "2.2.0"
+        "revision" : "6c5a832aeba8ce25dd550c7b3c0f95e3f858ca86",
+        "version" : "2.4.1"
       }
     },
     {
@@ -137,30 +155,12 @@
       }
     },
     {
-      "identity" : "swift-json-schema",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/ajevans99/swift-json-schema.git",
-      "state" : {
-        "revision" : "c9f125a4fafd7d31abc8491cf176fa1ebf74bc7c",
-        "version" : "0.11.1"
-      }
-    },
-    {
       "identity" : "swift-log",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-log.git",
       "state" : {
         "revision" : "bbd81b6725ae874c69e9b8c8804d462356b55523",
         "version" : "1.10.1"
-      }
-    },
-    {
-      "identity" : "swift-mcp-toolkit",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/mehmetbaykar/swift-mcp-toolkit.git",
-      "state" : {
-        "revision" : "6ddb900bb9217414d0f2b79aca26a72336f8d556",
-        "version" : "0.5.0"
       }
     },
     {
@@ -258,8 +258,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/swiftlang/swift-syntax.git",
       "state" : {
-        "revision" : "4799286537280063c85a32f09884cfbca301b1a1",
-        "version" : "602.0.0"
+        "revision" : "9de99a78f099e59caf2b2beec65a4c45d54b2081",
+        "version" : "603.0.1"
       }
     },
     {

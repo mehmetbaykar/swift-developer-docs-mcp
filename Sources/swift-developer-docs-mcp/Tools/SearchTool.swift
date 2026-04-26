@@ -2,28 +2,15 @@ import AppleDocsCore
 import FastMCP
 import Foundation
 
-struct SearchAppleDocsTool: MCPStructuredTool {
-  typealias Output = StructuredSearchResponse
-
-  let name = "searchAppleDocumentation"
-  let description: String? = "Search Apple Developer documentation and return structured results"
-
-  var annotations: Tool.Annotations {
-    Tool.Annotations(
-      title: "Search Apple Documentation",
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true
-    )
+@Tool("Search Apple Developer documentation and return structured results")
+struct SearchAppleDocumentationTool {
+  @Generable
+  struct Arguments {
+    @Parameter("Search query")
+    var query: String
   }
 
-  @Schemable
-  struct Parameters: Sendable {
-    let query: String
-  }
-
-  @Schemable
+  @Generable
   struct StructuredSearchResult: Codable, Sendable {
     let title: String
     let url: String
@@ -31,45 +18,22 @@ struct SearchAppleDocsTool: MCPStructuredTool {
     let breadcrumbs: [String]
     let tags: [String]
     let type: String
-
-    init(
-      title: String,
-      url: String,
-      description: String,
-      breadcrumbs: [String],
-      tags: [String],
-      type: String
-    ) {
-      self.title = title
-      self.url = url
-      self.description = description
-      self.breadcrumbs = breadcrumbs
-      self.tags = tags
-      self.type = type
-    }
   }
 
-  @Schemable
+  @Generable
   struct StructuredSearchResponse: Codable, Sendable {
     let query: String
     let results: [StructuredSearchResult]
-
-    init(query: String, results: [StructuredSearchResult]) {
-      self.query = query
-      self.results = results
-    }
   }
 
-  func callStructured(with args: Parameters) async throws(ToolError)
-    -> StructuredToolResult<StructuredSearchResponse>
-  {
+  func execute(_ arguments: Arguments) async throws -> StructuredSearchResponse {
     do {
-      let output = try await AppleDocsActions.search(query: args.query)
+      let output = try await AppleDocsActions.search(query: arguments.query)
       guard let response = output.response else {
-        throw ToolError("Search failed: unable to decode structured response")
+        throw ToolExecutionError("Search failed: unable to decode structured response")
       }
 
-      let structured = StructuredSearchResponse(
+      return StructuredSearchResponse(
         query: response.query,
         results: response.results.map {
           StructuredSearchResult(
@@ -82,12 +46,8 @@ struct SearchAppleDocsTool: MCPStructuredTool {
           )
         }
       )
-
-      return StructuredToolResult(structuredContent: structured) {
-        ToolContentItem(text: output.formatted)
-      }
     } catch {
-      throw ToolError("Search failed: \(error.localizedDescription)")
+      throw ToolExecutionError("Search failed: \(error.localizedDescription)")
     }
   }
 }

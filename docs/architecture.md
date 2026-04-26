@@ -115,7 +115,6 @@ Sources/swift-developer-docs-mcp/
 │   └── FetchVideoTranscriptTool.swift — fetchAppleVideoTranscript
 ├── Server/
 │   ├── ServerApp.swift          — Hummingbird routes + llms.txt
-│   ├── MCPHTTPBridge.swift      — MCP-over-HTTP bridge with session handling
 │   ├── SecurityHeadersMiddleware.swift
 │   ├── CORSMiddleware.swift
 │   └── TrailingSlashMiddleware.swift
@@ -189,16 +188,14 @@ All commands support `--json` for JSON output.
 
 ## MCP Tools
 
-4 MCP tools registered via FastMCP:
+4 MCP tools registered via FastMCP macros:
 
 | Tool | Input | Description |
 |------|-------|-------------|
 | `searchAppleDocumentation` | `query: String` | Search with readable text + native structured output |
-| `fetchAppleDocumentation` | `path: String` | Fetch reference docs or HIG |
+| `fetchAppleDocumentation` | `path: String` | Fetch reference docs, HIG, video transcripts, or external docs via auto-routing |
 | `fetchExternalDocumentation` | `url: String` | Fetch external DocC with SSRF protection |
 | `fetchAppleVideoTranscript` | `path: String` | Fetch video transcripts |
-
-All tools declare: `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: true`.
 
 ## HTTP Server
 
@@ -214,7 +211,6 @@ Hummingbird-based HTTP server with these routes:
 | `GET /design/human-interface-guidelines/{path+}` | HIG pages |
 | `GET /videos/play/{collection}/{id}` | Video transcripts |
 | `GET /external/{path+}` | External documentation |
-| `GET /mcp`, `POST /mcp`, `DELETE /mcp` | MCP over HTTP |
 | `GET /{path+}` | Catch-all 404 handler |
 
 Middleware stack: TrailingSlashMiddleware → SecurityHeadersMiddleware → CORSMiddleware
@@ -258,7 +254,7 @@ External Swift-DocC documentation with full SSRF protection:
 
 | Package | Purpose |
 |---------|---------|
-| [swift-fast-mcp](https://github.com/mehmetbaykar/swift-fast-mcp) | MCP server framework (stdio transport, tool/resource registration) |
+| [swift-fast-mcp](https://github.com/mehmetbaykar/swift-fast-mcp) | MCP server framework (stdio transport, macro-based tool registration) |
 | [SwiftSoup](https://github.com/scinfu/SwiftSoup) | HTML parsing for search results, video transcripts, robots.txt |
 | [Hummingbird](https://github.com/hummingbird-project/hummingbird) | HTTP server framework |
 

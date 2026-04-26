@@ -20,8 +20,8 @@ struct AppleDocsMCPServer: Sendable {
     self.instructions = instructions
   }
 
-  func builder(transport: Transport = .stdio) -> FastMCP.Builder {
-    FastMCP.builder()
+  func builder(transport: Transport = .stdio) throws -> FastMCP.Builder {
+    try FastMCP.builder()
       .name(name)
       .version(version)
       .title(title)
@@ -30,27 +30,12 @@ struct AppleDocsMCPServer: Sendable {
       .transport(transport)
   }
 
-  func makeServer() async -> Server {
-    let server = Server(
-      name: name,
-      version: version,
-      title: title,
-      instructions: instructions,
-      capabilities: Server.Capabilities(
-        tools: .init(listChanged: false)
-      )
-    )
-
-    await server.register(tools: makeTools())
-    return server
-  }
-
-  private func makeTools() -> [any MCPTool] {
+  private func makeTools() -> [any Tool] {
     [
-      SearchAppleDocsTool(),
-      FetchAppleDocsTool(),
-      FetchExternalDocTool(),
-      FetchVideoTranscriptTool(),
+      SearchAppleDocumentationTool(),
+      FetchAppleDocumentationTool(),
+      FetchExternalDocumentationTool(),
+      FetchAppleVideoTranscriptTool(),
     ]
   }
 }

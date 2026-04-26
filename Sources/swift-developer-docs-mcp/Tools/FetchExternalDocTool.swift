@@ -2,33 +2,20 @@ import AppleDocsCore
 import FastMCP
 import Foundation
 
-struct FetchExternalDocTool: MCPTool {
-  let name = "fetchExternalDocumentation"
-  let description: String? =
-    "Fetch external Swift-DocC documentation by absolute https URL and return as markdown"
-
-  var annotations: Tool.Annotations {
-    Tool.Annotations(
-      title: "Fetch External Documentation",
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true
-    )
+@Tool("Fetch external Swift-DocC documentation by absolute https URL and return as markdown")
+struct FetchExternalDocumentationTool {
+  @Generable
+  struct Arguments {
+    @Parameter("Absolute HTTPS URL for external Swift-DocC documentation")
+    var url: String
   }
 
-  @Schemable
-  struct Parameters: Sendable {
-    let url: String
-  }
-
-  func call(with args: Parameters) async throws(ToolError) -> Content {
+  func execute(_ arguments: Arguments) async throws -> String {
     do {
-      let markdown = try await AppleDocsActions.fetchExternal(url: args.url)
-      return [ToolContentItem(text: markdown)]
+      return try await AppleDocsActions.fetchExternal(url: arguments.url)
     } catch {
-      throw ToolError(
-        "Error fetching external content for \"\(args.url)\": \(error.localizedDescription)")
+      throw ToolExecutionError(
+        "Error fetching external content for \"\(arguments.url)\": \(error.localizedDescription)")
     }
   }
 }

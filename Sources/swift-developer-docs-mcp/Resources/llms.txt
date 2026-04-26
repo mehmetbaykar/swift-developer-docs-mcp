@@ -22,11 +22,6 @@ GET /external/{full-https-url}
 ### Search
 GET /search?q={query}
 
-### MCP
-GET /mcp
-POST /mcp
-DELETE /mcp
-
 ## Content Negotiation
 
 `GET /` returns HTML by default.

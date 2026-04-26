@@ -2,33 +2,23 @@ import AppleDocsCore
 import FastMCP
 import Foundation
 
-struct FetchAppleDocsTool: MCPTool {
-  let name = "fetchAppleDocumentation"
-  let description: String? =
-    "Fetch Apple Developer documentation and Human Interface Guidelines by path and return as markdown"
-
-  var annotations: Tool.Annotations {
-    Tool.Annotations(
-      title: "Fetch Apple Documentation",
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true
-    )
+@Tool(
+  "Fetch Apple Developer documentation and Human Interface Guidelines by path and return as markdown"
+)
+struct FetchAppleDocumentationTool {
+  @Generable
+  struct Arguments {
+    @Parameter(
+      "Documentation, Human Interface Guidelines, video, or supported external documentation path")
+    var path: String
   }
 
-  @Schemable
-  struct Parameters: Sendable {
-    let path: String
-  }
-
-  func call(with args: Parameters) async throws(ToolError) -> Content {
+  func execute(_ arguments: Arguments) async throws -> String {
     do {
       let client = AppleDocsClient.live
-      let markdown = try await client.unifiedFetch(input: args.path)
-      return [ToolContentItem(text: markdown)]
+      return try await client.unifiedFetch(input: arguments.path)
     } catch {
-      throw ToolError(error.localizedDescription)
+      throw ToolExecutionError(error.localizedDescription)
     }
   }
 }

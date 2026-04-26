@@ -4,24 +4,15 @@ import HTTPTypes
 import Hummingbird
 
 struct ServerApp {
-  let mcpServer: AppleDocsMCPServer
   let hostname: String
   let port: Int
-  let mcpBridge: MCPHTTPBridge
 
   init(
-    mcpServer: AppleDocsMCPServer = AppleDocsMCPServer(),
     hostname: String = "127.0.0.1",
     port: Int = 8080
   ) {
-    self.mcpServer = mcpServer
     self.hostname = hostname
     self.port = port
-    self.mcpBridge = MCPHTTPBridge(
-      mcpServer: mcpServer,
-      hostname: hostname,
-      port: port
-    )
   }
 
   func run() async throws {
@@ -32,12 +23,6 @@ struct ServerApp {
         address: .hostname(hostname, port: port)
       )
     )
-
-    defer {
-      Task {
-        await mcpBridge.shutdown()
-      }
-    }
 
     printToStdErr("Server started at http://\(hostname):\(port)")
     try await app.runService()
@@ -239,28 +224,6 @@ struct ServerApp {
       }
     }
 
-    router.get("/mcp") { request, _ -> Response in
-      await mcpResponse(for: request)
-    }
-    router.head("/mcp") { request, _ -> Response in
-      await mcpResponse(for: request)
-    }
-    router.post("/mcp") { request, _ -> Response in
-      await mcpResponse(for: request)
-    }
-    router.delete("/mcp") { request, _ -> Response in
-      await mcpResponse(for: request)
-    }
-    router.put("/mcp") { request, _ -> Response in
-      await mcpResponse(for: request)
-    }
-    router.patch("/mcp") { request, _ -> Response in
-      await mcpResponse(for: request)
-    }
-    router.on("/mcp", method: .options) { request, _ -> Response in
-      await mcpResponse(for: request)
-    }
-
     router.get("/**") { request, _ -> Response in
       errorResponse(
         request: request,
@@ -377,38 +340,6 @@ struct ServerApp {
     )
   }
 
-  private func mcpResponse(for request: Request) async -> Response {
-    do {
-      let bridgeResponse = try await bridgeMCPRequest(request)
-      return ServerApp.response(from: bridgeResponse)
-    } catch {
-      return errorResponse(
-        request: request,
-        status: .badRequest,
-        message: "Invalid MCP request body: \(error.localizedDescription)"
-      )
-    }
-  }
-
-  private func bridgeMCPRequest(_ request: Request) async throws -> MCPBridgeResponse {
-    var mutableRequest = request
-    let bodyData: Data?
-
-    switch mutableRequest.method {
-    case .post, .put, .patch, .delete:
-      let body = try await mutableRequest.collectBody(upTo: 1_048_576)
-      bodyData = body.readableBytes > 0 ? Data(body.readableBytesView) : nil
-    default:
-      bodyData = nil
-    }
-
-    return await mcpBridge.handle(
-      method: mutableRequest.method.rawValue,
-      headers: ServerApp.dictionaryHeaders(from: mutableRequest.headers),
-      body: bodyData
-    )
-  }
-
   private func handleFetchError(_ error: Error, path: String, request: Request) -> Response {
     if let docsError = error as? AppleDocsError {
       switch docsError {
@@ -513,82 +444,6 @@ struct ServerApp {
     ]
   }
 
-  private static func dictionaryHeaders(from headers: HTTPFields) -> [String: String] {
-    var result: [String: String] = [:]
-
-    for header in headers {
-      if let existing = result[header.name.rawName] {
-        result[header.name.rawName] = existing + ", " + header.value
-      } else {
-        result[header.name.rawName] = header.value
-      }
-    }
-
-    return result
-  }
-
-  private static func response(from bridgeResponse: MCPBridgeResponse) -> Response {
-    let status = HTTPResponse.Status(code: bridgeResponse.statusCode)
-    let headers = httpFields(from: bridgeResponse.headers)
-
-    if let stream = bridgeResponse.stream {
-      return Response(
-        status: status,
-        headers: headers,
-        body: .init(asyncSequence: byteBufferStream(from: stream))
-      )
-    }
-
-    let bodyBuffer: ByteBuffer
-    if let body = bridgeResponse.body {
-      var buffer = ByteBufferAllocator().buffer(capacity: body.count)
-      buffer.writeBytes(body)
-      bodyBuffer = buffer
-    } else {
-      bodyBuffer = .init()
-    }
-
-    return Response(
-      status: status,
-      headers: headers,
-      body: .init(byteBuffer: bodyBuffer)
-    )
-  }
-
-  private static func httpFields(from headers: [String: String]) -> HTTPFields {
-    var fields: HTTPFields = [:]
-
-    for (name, value) in headers {
-      guard let headerName = HTTPField.Name(name) else { continue }
-      fields[headerName] = value
-    }
-
-    return fields
-  }
-
-  private static func byteBufferStream(
-    from stream: AsyncThrowingStream<Data, Error>
-  ) -> AsyncThrowingStream<ByteBuffer, Error> {
-    AsyncThrowingStream { continuation in
-      let task = Task {
-        do {
-          for try await chunk in stream {
-            var buffer = ByteBufferAllocator().buffer(capacity: chunk.count)
-            buffer.writeBytes(chunk)
-            continuation.yield(buffer)
-          }
-          continuation.finish()
-        } catch {
-          continuation.finish(throwing: error)
-        }
-      }
-
-      continuation.onTermination = { _ in
-        task.cancel()
-      }
-    }
-  }
-
   static let llmsTxt = """
     # swift-developer-docs-mcp
 
@@ -613,11 +468,6 @@ struct ServerApp {
 
     ### Search
     GET /search?q={query}
-
-    ### MCP
-    GET /mcp
-    POST /mcp
-    DELETE /mcp
 
     ## Content Negotiation
 
@@ -712,8 +562,8 @@ struct ServerApp {
             </p>
             <ul>
               <li>Read the service description at <a href="/llms.txt"><code>/llms.txt</code></a>.</li>
-              <li>Use <code>/documentation/*</code>, <code>/search</code>, <code>/design/*</code>, <code>/videos/*</code>, and <code>/external/*</code> for HTTP access.</li>
-              <li>Connect MCP clients over HTTP at <code>/mcp</code>.</li>
+              <li>Use <code>/documentation/*</code>, <code>/search</code>, <code>/design/*</code>, <code>/videos/*</code>, and <code>/external/*</code> for REST access.</li>
+              <li>Run the binary without a subcommand to start the MCP server over stdio.</li>
             </ul>
           </section>
         </main>

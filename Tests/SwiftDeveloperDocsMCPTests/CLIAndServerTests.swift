@@ -56,12 +56,6 @@ struct CLIAndServerTests {
       #expect(body.contains("\"message\":\"The requested resource was not found on this server.\""))
     }
 
-    @Test("Registers OPTIONS on /mcp")
-    func optionsOnMCPIsHandled() async throws {
-      let response = try await testResponse(uri: "/mcp", method: .options)
-      #expect(response.status.code != 404)
-    }
-
     private func testResponse(
       uri: String,
       method: HTTPRequest.Method = .get,
