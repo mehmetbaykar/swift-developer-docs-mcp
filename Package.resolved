@@ -42,8 +42,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mehmetbaykar/swift-ai-hub",
       "state" : {
-        "revision" : "2ca9a08d9a1d6ef9e0b40d915e1b837916be95a3",
-        "version" : "0.6.1"
+        "revision" : "4c37b3f64603b83f412241eac20c6f34e1f452a5",
+        "version" : "0.8.0"
       }
     },
     {
@@ -132,8 +132,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mehmetbaykar/swift-fast-mcp",
       "state" : {
-        "revision" : "6c5a832aeba8ce25dd550c7b3c0f95e3f858ca86",
-        "version" : "2.4.1"
+        "revision" : "519621eb493ea69ba28161477eb6a87fbb301f19",
+        "version" : "2.7.0"
       }
     },
     {
