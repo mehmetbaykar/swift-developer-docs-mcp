@@ -41,6 +41,8 @@ public struct ReferenceRenderer: Sendable {
       }
     }
 
+    markdown += renderDeprecationNotice(jsonData, references: jsonData.references)
+
     if let primarySections = jsonData.primaryContentSections {
       let declarationSection = primarySections.first { $0.kind == "declarations" }
       if let declarations = declarationSection?.declarations {
@@ -55,6 +57,11 @@ public struct ReferenceRenderer: Sendable {
       let propertiesSection = primarySections.first { $0.kind == "properties" }
       if let properties = propertiesSection?.items {
         markdown += ContentRenderer.renderProperties(properties, references: jsonData.references)
+      }
+
+      let possibleValuesSection = primarySections.first { $0.kind == "possibleValues" }
+      if let values = possibleValuesSection?.values {
+        markdown += ContentRenderer.renderPossibleValues(values, references: jsonData.references)
       }
 
       let contentSections = primarySections.filter { $0.kind == "content" }
@@ -138,6 +145,10 @@ public struct ReferenceRenderer: Sendable {
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     lines.append("timestamp: \(formatter.string(from: Date()))")
 
+    if isSymbolDeprecated(data) {
+      lines.append("deprecated: true")
+    }
+
     return "---\n\(lines.joined(separator: "\n"))\n---\n\n"
   }
 
@@ -172,10 +183,75 @@ public struct ReferenceRenderer: Sendable {
         .joined()
         .trimmingCharacters(in: .whitespacesAndNewlines)
       if !code.isEmpty {
-        markdown += "```swift\n\(code)\n```\n\n"
+        let fence = decl.languages?.contains("occ") == true ? "objc" : "swift"
+        markdown += "```\(fence)\n\(code)\n```\n\n"
       }
     }
     return markdown
+  }
+
+  static func renderDeprecationNotice(_ data: AppleDocJSON, references: [String: ContentItem]?)
+    -> String
+  {
+    guard let body = deprecationNoticeBody(data, references: references) else { return "" }
+    let quotedBody = body.replacingOccurrences(of: "\n", with: "\n> ")
+    return "> [!WARNING]\n> **Deprecated**\n>\n> \(quotedBody)\n\n"
+  }
+
+  static func isSymbolDeprecated(_ data: AppleDocJSON) -> Bool {
+    deprecationNoticeBody(data, references: data.references) != nil
+  }
+
+  private static func deprecationNoticeBody(
+    _ data: AppleDocJSON, references: [String: ContentItem]?
+  ) -> String? {
+    if let summary = data.deprecationSummary, !summary.isEmpty {
+      let rendered = ContentRenderer.renderContentArray(
+        summary, references: references
+      ).trimmingCharacters(in: .whitespacesAndNewlines)
+      if !rendered.isEmpty { return rendered }
+    }
+
+    if let platformMessage = deprecationMessage(from: data.metadata?.platforms) {
+      return platformMessage
+    }
+
+    if let identifier = data.identifier?.url, references?[identifier]?.deprecated == true {
+      return "This symbol is deprecated."
+    }
+
+    return nil
+  }
+
+  private static func deprecationMessage(from platforms: [Platform]?) -> String? {
+    guard let platforms, !platforms.isEmpty else { return nil }
+    let deprecatedPlatforms = platforms.filter { $0.deprecated == true || $0.deprecatedAt != nil }
+    guard !deprecatedPlatforms.isEmpty else { return nil }
+
+    var uniqueMessages: [String] = []
+    for platform in deprecatedPlatforms {
+      guard let message = platform.message?.trimmingCharacters(in: .whitespacesAndNewlines),
+        !message.isEmpty
+      else { continue }
+      if !uniqueMessages.contains(message) {
+        uniqueMessages.append(message)
+      }
+    }
+
+    if uniqueMessages.count == 1 {
+      return uniqueMessages[0]
+    }
+
+    if uniqueMessages.count > 1 {
+      return deprecatedPlatforms.compactMap { platform in
+        guard let message = platform.message?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !message.isEmpty
+        else { return nil }
+        return "**\(platform.name):** \(message)"
+      }.joined(separator: "\n")
+    }
+
+    return "This symbol is deprecated."
   }
 
   static func renderParameters(_ params: [Parameter], references: [String: ContentItem]?) -> String

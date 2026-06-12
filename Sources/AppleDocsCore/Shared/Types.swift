@@ -58,6 +58,7 @@ public struct ContentItem: Codable, Sendable {
   public let inlineContent: [ContentItem]?
   public let items: [ContentItem]?
   public let itemIdentifiers: [String]?
+  public let tabs: [TabNavigatorTab]?
   public let code: CodeValue?
   public let syntax: String?
   public let level: Int?
@@ -80,6 +81,7 @@ public struct ContentItem: Codable, Sendable {
   public let destination: String?
   public let overridingSymbol: String?
   public let extendedModule: String?
+  public let deprecated: Bool?
 
   public init(
     text: String? = nil, type: String? = nil, title: String? = nil, name: String? = nil,
@@ -92,7 +94,8 @@ public struct ContentItem: Codable, Sendable {
     conformance: ConformanceInfo? = nil, header: String? = nil,
     rows: [[[ContentItem]]]? = nil, alt: String? = nil,
     variants: [ImageVariantRef]? = nil, destination: String? = nil,
-    overridingSymbol: String? = nil, extendedModule: String? = nil
+    overridingSymbol: String? = nil, extendedModule: String? = nil,
+    deprecated: Bool? = nil, tabs: [TabNavigatorTab]? = nil
   ) {
     self.text = text
     self.type = type
@@ -103,6 +106,7 @@ public struct ContentItem: Codable, Sendable {
     self.inlineContent = inlineContent
     self.items = items
     self.itemIdentifiers = itemIdentifiers
+    self.tabs = tabs
     self.code = code
     self.syntax = syntax
     self.level = level
@@ -122,6 +126,7 @@ public struct ContentItem: Codable, Sendable {
     self.destination = destination
     self.overridingSymbol = overridingSymbol
     self.extendedModule = extendedModule
+    self.deprecated = deprecated
   }
 
   enum CodingKeys: String, CodingKey {
@@ -133,6 +138,7 @@ public struct ContentItem: Codable, Sendable {
     case content
     case inlineContent
     case items
+    case tabs
     case code
     case syntax
     case level
@@ -152,6 +158,7 @@ public struct ContentItem: Codable, Sendable {
     case destination
     case overridingSymbol
     case extendedModule
+    case deprecated
   }
 
   public init(from decoder: Decoder) throws {
@@ -175,6 +182,7 @@ public struct ContentItem: Codable, Sendable {
       self.items = nil
       self.itemIdentifiers = nil
     }
+    self.tabs = try container.decodeIfPresent([TabNavigatorTab].self, forKey: .tabs)
 
     self.code = try container.decodeIfPresent(CodeValue.self, forKey: .code)
     self.syntax = try container.decodeIfPresent(String.self, forKey: .syntax)
@@ -195,6 +203,7 @@ public struct ContentItem: Codable, Sendable {
     self.destination = try container.decodeIfPresent(String.self, forKey: .destination)
     self.overridingSymbol = try container.decodeIfPresent(String.self, forKey: .overridingSymbol)
     self.extendedModule = try container.decodeIfPresent(String.self, forKey: .extendedModule)
+    self.deprecated = try container.decodeIfPresent(Bool.self, forKey: .deprecated)
   }
 
   public func encode(to encoder: Encoder) throws {
@@ -212,6 +221,7 @@ public struct ContentItem: Codable, Sendable {
     } else {
       try container.encodeIfPresent(itemIdentifiers, forKey: .items)
     }
+    try container.encodeIfPresent(tabs, forKey: .tabs)
     try container.encodeIfPresent(code, forKey: .code)
     try container.encodeIfPresent(syntax, forKey: .syntax)
     try container.encodeIfPresent(level, forKey: .level)
@@ -231,6 +241,17 @@ public struct ContentItem: Codable, Sendable {
     try container.encodeIfPresent(destination, forKey: .destination)
     try container.encodeIfPresent(overridingSymbol, forKey: .overridingSymbol)
     try container.encodeIfPresent(extendedModule, forKey: .extendedModule)
+    try container.encodeIfPresent(deprecated, forKey: .deprecated)
+  }
+}
+
+public struct TabNavigatorTab: Codable, Sendable {
+  public let title: String?
+  public let content: [ContentItem]?
+
+  public init(title: String? = nil, content: [ContentItem]? = nil) {
+    self.title = title
+    self.content = content
   }
 }
 
@@ -264,9 +285,11 @@ public struct ConformanceConstraint: Codable, Sendable {
 
 public struct Declaration: Codable, Sendable {
   public let tokens: [Token]?
+  public let languages: [String]?
 
-  public init(tokens: [Token]? = nil) {
+  public init(tokens: [Token]? = nil, languages: [String]? = nil) {
     self.tokens = tokens
+    self.languages = languages
   }
 }
 
@@ -315,16 +338,29 @@ public struct PrimaryContentSection: Codable, Sendable {
   public let declarations: [Declaration]?
   public let parameters: [Parameter]?
   public let items: [PropertyItem]?
+  public let values: [PossibleValueItem]?
 
   public init(
     kind: String, content: [ContentItem]? = nil, declarations: [Declaration]? = nil,
-    parameters: [Parameter]? = nil, items: [PropertyItem]? = nil
+    parameters: [Parameter]? = nil, items: [PropertyItem]? = nil,
+    values: [PossibleValueItem]? = nil
   ) {
     self.kind = kind
     self.content = content
     self.declarations = declarations
     self.parameters = parameters
     self.items = items
+    self.values = values
+  }
+}
+
+public struct PossibleValueItem: Codable, Sendable {
+  public let name: String
+  public let content: [ContentItem]?
+
+  public init(name: String, content: [ContentItem]? = nil) {
+    self.name = name
+    self.content = content
   }
 }
 
@@ -396,11 +432,22 @@ public struct Platform: Codable, Sendable {
   public let name: String
   public let introducedAt: String
   public let beta: Bool?
+  public let deprecated: Bool?
+  public let deprecatedAt: String?
+  public let message: String?
+  public let unavailable: Bool?
 
-  public init(name: String, introducedAt: String, beta: Bool? = nil) {
+  public init(
+    name: String, introducedAt: String, beta: Bool? = nil, deprecated: Bool? = nil,
+    deprecatedAt: String? = nil, message: String? = nil, unavailable: Bool? = nil
+  ) {
     self.name = name
     self.introducedAt = introducedAt
     self.beta = beta
+    self.deprecated = deprecated
+    self.deprecatedAt = deprecatedAt
+    self.message = message
+    self.unavailable = unavailable
   }
 }
 
@@ -445,6 +492,7 @@ public struct AppleDocJSON: Codable, Sendable {
   public let kind: String?
   public let identifier: DocumentationIdentifier?
   public let abstract: [TextFragment]?
+  public let deprecationSummary: [ContentItem]?
   public let sections: [ContentItem]?
   public let primaryContentSections: [PrimaryContentSection]?
   public let topicSections: [TopicSection]?
@@ -458,7 +506,8 @@ public struct AppleDocJSON: Codable, Sendable {
   public init(
     metadata: DocumentationMetadata? = nil, kind: String? = nil,
     identifier: DocumentationIdentifier? = nil, abstract: [TextFragment]? = nil,
-    sections: [ContentItem]? = nil, primaryContentSections: [PrimaryContentSection]? = nil,
+    deprecationSummary: [ContentItem]? = nil, sections: [ContentItem]? = nil,
+    primaryContentSections: [PrimaryContentSection]? = nil,
     topicSections: [TopicSection]? = nil, seeAlsoSections: [SeeAlsoSection]? = nil,
     variants: [Variant]? = nil, relationshipsSections: [ContentItem]? = nil,
     references: [String: ContentItem]? = nil, interfaceLanguages: InterfaceLanguages? = nil,
@@ -468,6 +517,7 @@ public struct AppleDocJSON: Codable, Sendable {
     self.kind = kind
     self.identifier = identifier
     self.abstract = abstract
+    self.deprecationSummary = deprecationSummary
     self.sections = sections
     self.primaryContentSections = primaryContentSections
     self.topicSections = topicSections

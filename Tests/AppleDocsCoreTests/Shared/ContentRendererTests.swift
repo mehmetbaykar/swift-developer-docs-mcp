@@ -166,6 +166,15 @@ struct ContentRendererTests {
       #expect(result.contains("```swift\nlet x = 1\n```"))
     }
 
+    @Test("Normalizes Objective-C DocC syntax for code listings")
+    func codeListingObjectiveCSyntax() {
+      let items = [
+        ContentItem(type: "codeListing", code: .single("@interface Foo : NSObject"), syntax: "occ")
+      ]
+      let result = ContentRenderer.renderContentArray(items, references: nil)
+      #expect(result.contains("```objc\n@interface Foo : NSObject\n```"))
+    }
+
     @Test("Renders unordered list")
     func unorderedList() {
       let items = [
@@ -231,6 +240,105 @@ struct ContentRendererTests {
       ]
       let result = ContentRenderer.renderContentArray(items, references: nil, depth: 51)
       #expect(result == "[Content too deeply nested]")
+    }
+  }
+
+  @Suite("Tab Navigator Rendering")
+  struct TabNavigatorRendering {
+    @Test("Renders only Swift tab for language tabs")
+    func rendersOnlySwiftLanguageTab() throws {
+      let json = """
+        {
+          "type": "tabNavigator",
+          "tabs": [
+            {
+              "title": "Swift",
+              "content": [
+                { "type": "codeListing", "syntax": "swift", "code": ["let value = 1"] }
+              ]
+            },
+            {
+              "title": "Objective-C",
+              "content": [
+                { "type": "codeListing", "syntax": "occ", "code": ["NSInteger value = 1;"] }
+              ]
+            }
+          ]
+        }
+        """
+      let item = try JSONDecoder().decode(ContentItem.self, from: Data(json.utf8))
+      let result = ContentRenderer.renderContentArray([item], references: nil)
+
+      #expect(result.contains("```swift\nlet value = 1\n```"))
+      #expect(!result.contains("**Swift**"))
+      #expect(!result.contains("Objective-C"))
+      #expect(!result.contains("NSInteger value"))
+    }
+
+    @Test("Keeps labels when tabs are not language tabs")
+    func rendersNonLanguageTabsWithLabels() throws {
+      let json = """
+        {
+          "type": "tabNavigator",
+          "tabs": [
+            {
+              "title": "iOS",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "inlineContent": [{ "type": "text", "text": "iOS-specific note." }]
+                }
+              ]
+            },
+            {
+              "title": "macOS",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "inlineContent": [{ "type": "text", "text": "macOS-specific note." }]
+                }
+              ]
+            }
+          ]
+        }
+        """
+      let item = try JSONDecoder().decode(ContentItem.self, from: Data(json.utf8))
+      let result = ContentRenderer.renderContentArray([item], references: nil)
+
+      #expect(result.contains("**iOS**"))
+      #expect(result.contains("iOS-specific note."))
+      #expect(result.contains("**macOS**"))
+      #expect(result.contains("macOS-specific note."))
+    }
+
+    @Test("Renders Objective-C fallback tabs with normalized fences")
+    func rendersFallbackTabsWithNormalizedFences() throws {
+      let json = """
+        {
+          "type": "tabNavigator",
+          "tabs": [
+            {
+              "title": "Objective-C",
+              "content": [
+                { "type": "codeListing", "syntax": "occ", "code": ["@interface Foo : NSObject"] }
+              ]
+            },
+            {
+              "title": "C",
+              "content": [
+                { "type": "codeListing", "syntax": "c", "code": ["struct Foo;"] }
+              ]
+            }
+          ]
+        }
+        """
+      let item = try JSONDecoder().decode(ContentItem.self, from: Data(json.utf8))
+      let result = ContentRenderer.renderContentArray([item], references: nil)
+
+      #expect(result.contains("**Objective-C**"))
+      #expect(result.contains("```objc\n@interface Foo : NSObject\n```"))
+      #expect(result.contains("**C**"))
+      #expect(result.contains("```c\nstruct Foo;\n```"))
     }
   }
 
@@ -653,6 +761,51 @@ struct ContentRendererTests {
       #expect(result.contains("### `id`"))
       #expect(result.contains("### `title`"))
       #expect(result.contains("### `duration`"))
+    }
+  }
+
+  @Suite("Possible Values Rendering")
+  struct PossibleValuesRendering {
+    @Test("Renders primary possible values with content")
+    func possibleValuesWithContent() {
+      let result = ContentRenderer.renderPossibleValues(
+        [
+          PossibleValueItem(
+            name: "always",
+            content: [
+              ContentItem(
+                type: "paragraph",
+                inlineContent: [ContentItem(text: "Always use this behavior.", type: "text")])
+            ]),
+          PossibleValueItem(name: "never"),
+        ],
+        references: nil
+      )
+
+      #expect(result.contains("## Possible Values"))
+      #expect(result.contains("### `always`"))
+      #expect(result.contains("Always use this behavior."))
+      #expect(result.contains("### `never`"))
+    }
+
+    @Test("Renders possible values from document JSON")
+    func possibleValuesDocumentSection() {
+      let data = AppleDocJSON(
+        metadata: DocumentationMetadata(title: "Possible Values Test"),
+        primaryContentSections: [
+          PrimaryContentSection(
+            kind: "possibleValues",
+            values: [
+              PossibleValueItem(name: "automatic"),
+              PossibleValueItem(name: "manual"),
+            ])
+        ]
+      )
+      let result = DocumentRenderer.renderFromJSON(data, sourceURL: "https://test.com")
+
+      #expect(result.contains("## Possible Values"))
+      #expect(result.contains("### `automatic`"))
+      #expect(result.contains("### `manual`"))
     }
   }
 

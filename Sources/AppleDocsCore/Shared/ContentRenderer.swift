@@ -3,6 +3,7 @@ import Foundation
 public struct ContentRenderer: Sendable {
   private static let maxContentDepth = 50
   private static let maxInlineDepth = 20
+  private static let languageTabTitles: Set<String> = ["Swift", "Objective-C"]
 
   // MARK: - Inline Content Rendering
 
@@ -199,7 +200,7 @@ public struct ContentRenderer: Sendable {
       code = ""
     }
 
-    let syntax = item.syntax ?? "swift"
+    let syntax = normalizeFenceLanguage(item.syntax ?? "swift")
     return "```\(syntax)\n\(code)\n```\n\n"
   }
 
@@ -268,12 +269,25 @@ public struct ContentRenderer: Sendable {
     _ item: ContentItem, references: [String: ContentItem]?, depth: Int,
     externalOrigin: String?
   ) -> String {
-    guard let tabs = item.items else { return "" }
+    guard let tabs = item.tabs, !tabs.isEmpty else { return "" }
+    let allLanguageTabs = tabs.allSatisfy { tab in
+      guard let title = tab.title?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+        return false
+      }
+      return languageTabTitles.contains(title)
+    }
+    let swiftTabs = tabs.filter {
+      $0.title?.trimmingCharacters(in: .whitespacesAndNewlines) == "Swift"
+    }
+    let tabsToRender = allLanguageTabs && !swiftTabs.isEmpty ? swiftTabs : tabs
+    let showLabel = tabsToRender.count > 1
 
     var markdown = ""
-    for tab in tabs {
-      if let tabTitle = tab.title {
-        markdown += "### \(tabTitle)\n\n"
+    for tab in tabsToRender {
+      if showLabel, let tabTitle = tab.title?.trimmingCharacters(in: .whitespacesAndNewlines),
+        !tabTitle.isEmpty
+      {
+        markdown += "**\(tabTitle)**\n\n"
       }
       if let tabContent = tab.content {
         markdown += renderContentArray(
@@ -284,6 +298,30 @@ public struct ContentRenderer: Sendable {
         )
       }
     }
+    return markdown
+  }
+
+  public static func renderPossibleValues(
+    _ values: [PossibleValueItem], references: [String: ContentItem]?,
+    externalOrigin: String? = nil
+  ) -> String {
+    if values.isEmpty { return "" }
+
+    var markdown = "## Possible Values\n\n"
+    for value in values {
+      if value.name.isEmpty { continue }
+      markdown += "### `\(value.name)`\n\n"
+
+      if let content = value.content {
+        let rendered = renderContentArray(
+          content, references: references, externalOrigin: externalOrigin
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !rendered.isEmpty {
+          markdown += "\(rendered)\n\n"
+        }
+      }
+    }
+
     return markdown
   }
 
@@ -401,7 +439,8 @@ public struct ContentRenderer: Sendable {
       : ""
     let cleanContent = asideContent.trimmingCharacters(in: .whitespacesAndNewlines)
       .replacingOccurrences(of: "\n", with: "\n> ")
-    return "> [!\(calloutType)]\n> \(cleanContent)\n\n"
+    let deprecatedLabel = style.lowercased() == "deprecated" ? "**Deprecated**\n>\n> " : ""
+    return "> [!\(calloutType)]\n> \(deprecatedLabel)\(cleanContent)\n\n"
   }
 
   // MARK: - Image Rendering
@@ -501,6 +540,10 @@ public struct ContentRenderer: Sendable {
       markdown += "\n"
     }
     return markdown
+  }
+
+  public static func normalizeFenceLanguage(_ syntax: String) -> String {
+    syntax == "occ" ? "objc" : syntax
   }
 
   // MARK: - Utility Functions

@@ -156,6 +156,26 @@ struct RendererTests {
       #expect(result.contains("```swift\nvar property2: Int\n```"))
     }
 
+    @Test("Renders Objective-C declarations with objc fence")
+    func objectiveCDeclaration() {
+      let data = AppleDocJSON(
+        metadata: DocumentationMetadata(title: "Objective-C Declaration"),
+        primaryContentSections: [
+          PrimaryContentSection(
+            kind: "declarations",
+            declarations: [
+              Declaration(
+                tokens: [
+                  Token(text: "@interface Foo : NSObject", kind: "text")
+                ],
+                languages: ["occ"])
+            ])
+        ]
+      )
+      let result = DocumentRenderer.renderFromJSON(data, sourceURL: "https://test.com")
+      #expect(result.contains("```objc\n@interface Foo : NSObject\n```"))
+    }
+
     @Test("Handles empty or malformed token arrays")
     func malformedTokens() {
       let data = AppleDocJSON(
@@ -237,6 +257,76 @@ struct RendererTests {
       let result = DocumentRenderer.renderFromJSON(data, sourceURL: "https://test.com")
       #expect(result.contains("> [!NOTE]"))
       #expect(result.contains("> Default aside content."))
+    }
+  }
+
+  @Suite("Deprecation Rendering")
+  struct DeprecationRendering {
+    @Test("Marks deprecated symbols in front matter and renders summary")
+    func deprecationSummary() {
+      let symbolID = "doc://com.example/documentation/Example/legacy()"
+      let data = AppleDocJSON(
+        metadata: DocumentationMetadata(title: "legacy()"),
+        identifier: DocumentationIdentifier(url: symbolID, interfaceLanguage: nil),
+        abstract: [TextFragment(text: "A legacy API.", type: "text")],
+        deprecationSummary: [
+          ContentItem(
+            type: "paragraph",
+            inlineContent: [
+              ContentItem(text: "Use ", type: "text"),
+              ContentItem(
+                type: "reference", title: "modern()",
+                identifier: "doc://com.example/documentation/Example/modern()"),
+              ContentItem(text: " instead.", type: "text"),
+            ])
+        ],
+        references: [
+          "doc://com.example/documentation/Example/modern()": ContentItem(
+            url: "/documentation/Example/modern()")
+        ]
+      )
+
+      let result = DocumentRenderer.renderFromJSON(data, sourceURL: "https://test.com")
+      #expect(result.contains("deprecated: true"))
+      #expect(result.contains("> [!WARNING]"))
+      #expect(result.contains("> **Deprecated**"))
+      #expect(result.contains("[modern()](/documentation/Example/modern()) instead."))
+    }
+
+    @Test("Uses platform deprecation message without summary")
+    func platformDeprecationMessage() {
+      let data = AppleDocJSON(
+        metadata: DocumentationMetadata(
+          title: "legacyMethod()",
+          platforms: [
+            Platform(
+              name: "iOS",
+              introducedAt: "2.0",
+              deprecatedAt: "8.0",
+              message: "Use modernMethod() instead.")
+          ]),
+        abstract: [TextFragment(text: "A legacy API.", type: "text")]
+      )
+
+      let result = DocumentRenderer.renderFromJSON(data, sourceURL: "https://test.com")
+      #expect(result.contains("deprecated: true"))
+      #expect(result.contains("> Use modernMethod() instead."))
+    }
+
+    @Test("Uses default message when self reference is deprecated")
+    func deprecatedSelfReference() {
+      let symbolID = "doc://com.example/documentation/Example/legacy()"
+      let data = AppleDocJSON(
+        metadata: DocumentationMetadata(title: "legacy()"),
+        identifier: DocumentationIdentifier(url: symbolID, interfaceLanguage: nil),
+        references: [
+          symbolID: ContentItem(title: "legacy()", deprecated: true)
+        ]
+      )
+
+      let result = DocumentRenderer.renderFromJSON(data, sourceURL: "https://test.com")
+      #expect(result.contains("deprecated: true"))
+      #expect(result.contains("> This symbol is deprecated."))
     }
   }
 
