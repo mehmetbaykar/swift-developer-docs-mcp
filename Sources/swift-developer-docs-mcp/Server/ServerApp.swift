@@ -46,6 +46,22 @@ struct ServerApp {
       )
     }
 
+    router.get("/robots.txt") { _, _ -> Response in
+      staticTextResponse(
+        ServerApp.robotsTxt,
+        contentType: "text/plain; charset=utf-8",
+        cacheControl: "public, max-age=3600, s-maxage=86400"
+      )
+    }
+
+    router.get("/sitemap.xml") { request, _ -> Response in
+      staticTextResponse(
+        ServerApp.sitemapXML(for: request),
+        contentType: "application/xml; charset=utf-8",
+        cacheControl: "public, max-age=3600, s-maxage=86400"
+      )
+    }
+
     router.get("/bot") { _, _ -> Response in
       Response(
         status: .found,
@@ -293,13 +309,14 @@ struct ServerApp {
 
   private func staticTextResponse(
     _ body: String,
-    contentType: String
+    contentType: String,
+    cacheControl: String = "public, max-age=300, s-maxage=600"
   ) -> Response {
     Response(
       status: .ok,
       headers: ServerApp.standardHeaders(
         contentType: contentType,
-        cacheControl: "public, max-age=300, s-maxage=600"
+        cacheControl: cacheControl
       ),
       body: .init(byteBuffer: .init(string: body))
     )
@@ -440,42 +457,88 @@ struct ServerApp {
       .cacheControl: "public, max-age=3600, s-maxage=86400",
       .init("Content-Location")!: sourceURL,
       .init("ETag")!: etag,
+      .init("X-Robots-Tag")!: "noindex, nofollow, noarchive",
       .init("Vary")!: "Accept",
     ]
+  }
+
+  static let robotsTxt = """
+    User-agent: *
+    Allow: /
+    Allow: /llms.txt
+    Allow: /sitemap.xml
+    Disallow: /documentation/
+    Disallow: /design/human-interface-guidelines
+    Disallow: /videos/play/
+    Disallow: /external/
+
+    Sitemap: /sitemap.xml
+    """
+
+  static func sitemapXML(for request: Request) -> String {
+    let scheme = request.headers[.init("X-Forwarded-Proto")!] ?? "http"
+    let host = request.headers[.init("X-Forwarded-Host")!] ?? "127.0.0.1"
+    let origin = "\(scheme)://\(host)"
+    return """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+        <url>
+          <loc>\(origin)/</loc>
+        </url>
+        <url>
+          <loc>\(origin)/llms.txt</loc>
+        </url>
+      </urlset>
+      """
   }
 
   static let llmsTxt = """
     # swift-developer-docs-mcp
 
-    Apple Developer documentation, Human Interface Guidelines,
-    WWDC video transcripts, and external Swift-DocC sites
-    rendered as AI-friendly Markdown.
+    Apple Developer documentation, Human Interface Guidelines, WWDC video transcripts,
+    and external Swift-DocC sites rendered as AI-friendly Markdown.
 
-    ## HTTP Usage
+    This server is read-only. It fetches upstream documentation on demand and returns
+    Markdown by default, with JSON available from generated document endpoints.
 
-    ### Documentation
-    GET /documentation/{path}
+    ## Best Entry Points
 
-    ### Human Interface Guidelines
-    GET /design/human-interface-guidelines
-    GET /design/human-interface-guidelines/{path}
+    - `GET /search?q={query}` - Search Apple Developer Documentation.
+    - `GET /documentation/{path}` - Fetch Apple reference documentation.
+    - `GET /design/human-interface-guidelines` - Fetch the HIG table of contents.
+    - `GET /design/human-interface-guidelines/{path}` - Fetch a HIG page.
+    - `GET /videos/play/{collection}/{id}` - Fetch a WWDC video transcript.
+    - `GET /external/{full-https-url}` - Fetch allowed external Swift-DocC documentation.
 
-    ### Video Transcripts
-    GET /videos/play/{collection}/{id}
+    ## Examples
 
-    ### External DocC
-    GET /external/{full-https-url}
-
-    ### Search
-    GET /search?q={query}
+    - `/search?q=SwiftUI%20NavigationStack`
+    - `/documentation/swift/array`
+    - `/documentation/swiftui/view`
+    - `/design/human-interface-guidelines/foundations/color`
+    - `/videos/play/wwdc2024/10145`
 
     ## Content Negotiation
 
-    `GET /` returns HTML by default.
-    Send `Accept: text/markdown` to receive this `llms.txt` document instead.
+    `GET /` returns HTML by default. Send `Accept: text/markdown` to receive this
+    service guide instead.
 
-    Documentation endpoints return text/markdown by default.
-    Set `Accept: application/json` for JSON output.
+    Generated document endpoints return `text/markdown` by default. Send
+    `Accept: application/json` to receive:
+
+    ```json
+    {"url":"https://developer.apple.com/...","content":"# Markdown ..."}
+    ```
+
+    Search returns formatted plain text by default. Send `Accept: application/json`
+    for structured results.
+
+    ## Crawl Policy
+
+    Public deployments should treat generated documentation pages as proxied content.
+    Generated documentation responses include `X-Robots-Tag: noindex, nofollow,
+    noarchive`. Crawlers should use `/robots.txt` and `/sitemap.xml`; the sitemap
+    intentionally lists only the service entry points, not proxied Apple pages.
 
     ## Available MCP Tools
 
@@ -483,6 +546,14 @@ struct ServerApp {
     - `fetchAppleDocumentation` - Fetch documentation, HIG, or video transcripts by path
     - `fetchExternalDocumentation` - Fetch external Swift-DocC documentation by URL
     - `fetchAppleVideoTranscript` - Fetch Apple Developer video transcripts
+
+    ## Notes For Agents
+
+    - Prefer `/search` before fetching a path when the exact documentation slug is unknown.
+    - Use `/external/` only for public HTTPS Swift-DocC sites. Private networks and
+      disallowed robots targets are blocked.
+    - This HTTP surface is REST-oriented. The MCP server itself runs over stdio when
+      the binary is launched without the `serve` subcommand.
 
     ---
     *Generated by [swift-developer-docs-mcp](https://github.com/mehmetbaykar/swift-developer-docs-mcp)*

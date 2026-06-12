@@ -30,6 +30,8 @@ struct CLIAndServerTests {
       #expect(routes.contains("/documentation/**"))
       #expect(routes.contains("/design/human-interface-guidelines/**"))
       #expect(routes.contains("/external/**"))
+      #expect(routes.contains("/robots.txt"))
+      #expect(routes.contains("/sitemap.xml"))
       #expect(routes.contains("/**"))
     }
 
@@ -39,6 +41,49 @@ struct CLIAndServerTests {
 
       #expect(response.status == .found)
       #expect(response.headers[.location] == "/#bot")
+    }
+
+    @Test("Serves robots.txt with proxied content disallowed")
+    func robotsTxt() async throws {
+      let response = try await testResponse(uri: "/robots.txt")
+      let body = response.body.getString(at: 0, length: response.body.readableBytes) ?? ""
+
+      #expect(response.status == .ok)
+      #expect(response.headers[.contentType]?.contains("text/plain") == true)
+      #expect(body.contains("Allow: /llms.txt"))
+      #expect(body.contains("Disallow: /documentation/"))
+      #expect(body.contains("Disallow: /external/"))
+      #expect(body.contains("Sitemap: /sitemap.xml"))
+    }
+
+    @Test("Serves sitemap with public entry points")
+    func sitemapXML() async throws {
+      let response = try await testResponse(
+        uri: "/sitemap.xml",
+        headers: [
+          .init("X-Forwarded-Proto")!: "https",
+          .init("X-Forwarded-Host")!: "docs.example.com",
+        ]
+      )
+      let body = response.body.getString(at: 0, length: response.body.readableBytes) ?? ""
+
+      #expect(response.status == .ok)
+      #expect(response.headers[.contentType]?.contains("application/xml") == true)
+      #expect(body.contains("<loc>https://docs.example.com/</loc>"))
+      #expect(body.contains("<loc>https://docs.example.com/llms.txt</loc>"))
+      #expect(!body.contains("/documentation/"))
+    }
+
+    @Test("Serves improved llms.txt guide")
+    func llmsTxtGuide() async throws {
+      let response = try await testResponse(uri: "/llms.txt")
+      let body = response.body.getString(at: 0, length: response.body.readableBytes) ?? ""
+
+      #expect(response.status == .ok)
+      #expect(response.headers[.contentType]?.contains("text/markdown") == true)
+      #expect(body.contains("## Best Entry Points"))
+      #expect(body.contains("## Crawl Policy"))
+      #expect(body.contains("The MCP server itself runs over stdio"))
     }
 
     @Test("Returns JSON errors when the client asks for JSON")
