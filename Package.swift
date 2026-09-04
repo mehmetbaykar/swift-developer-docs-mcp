@@ -10,9 +10,9 @@ let package = Package(
     .executable(name: "swift-developer-docs-mcp", targets: ["swift-developer-docs-mcp"]),
   ],
   dependencies: [
-    .package(url: "https://github.com/mehmetbaykar/swift-fast-mcp", from: "2.3.0"),
-    .package(url: "https://github.com/scinfu/SwiftSoup", from: "2.7.0"),
-    .package(url: "https://github.com/hummingbird-project/hummingbird", from: "2.0.0"),
+    .package(url: "https://github.com/mehmetbaykar/swift-fast-mcp", from: "2.7.0"),
+    .package(url: "https://github.com/scinfu/SwiftSoup", from: "2.13.9"),
+    .package(url: "https://github.com/hummingbird-project/hummingbird", from: "2.26.0"),
   ],
   targets: [
     .target(
