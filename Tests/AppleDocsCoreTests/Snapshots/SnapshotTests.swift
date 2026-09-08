@@ -81,11 +81,11 @@ struct SnapshotTests {
     @Test("Contains topic links with identifiers")
     func containsTopicLinks() throws {
       let output = try renderArray()
-      #expect(output.contains("[init()]"))
-      #expect(output.contains("[isEmpty]"))
-      #expect(output.contains("[count]"))
-      #expect(output.contains("[first]"))
-      #expect(output.contains("[last]"))
+      #expect(output.contains("[`init()`]"))
+      #expect(output.contains("[`isEmpty`]"))
+      #expect(output.contains("[`count`]"))
+      #expect(output.contains("[`first`]"))
+      #expect(output.contains("[`last`]"))
     }
 
     @Test("Contains footer")

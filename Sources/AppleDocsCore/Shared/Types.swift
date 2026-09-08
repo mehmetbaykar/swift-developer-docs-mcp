@@ -52,6 +52,8 @@ public struct ContentItem: Codable, Sendable {
   public let text: String?
   public let type: String?
   public let title: String?
+  /// Rich title DocC emits for symbol references; preserves code spans in link text.
+  public let titleInlineContent: [ContentItem]?
   public let name: String?
   public let tokens: [Token]?
   public let content: [ContentItem]?
@@ -59,6 +61,8 @@ public struct ContentItem: Codable, Sendable {
   public let items: [ContentItem]?
   public let itemIdentifiers: [String]?
   public let tabs: [TabNavigatorTab]?
+  /// Column blocks of a `row` item; each column carries its own `content` array.
+  public let columns: [ContentItem]?
   public let code: CodeValue?
   public let syntax: String?
   public let level: Int?
@@ -95,11 +99,13 @@ public struct ContentItem: Codable, Sendable {
     rows: [[[ContentItem]]]? = nil, alt: String? = nil,
     variants: [ImageVariantRef]? = nil, destination: String? = nil,
     overridingSymbol: String? = nil, extendedModule: String? = nil,
-    deprecated: Bool? = nil, tabs: [TabNavigatorTab]? = nil
+    deprecated: Bool? = nil, tabs: [TabNavigatorTab]? = nil,
+    titleInlineContent: [ContentItem]? = nil, columns: [ContentItem]? = nil
   ) {
     self.text = text
     self.type = type
     self.title = title
+    self.titleInlineContent = titleInlineContent
     self.name = name
     self.tokens = tokens
     self.content = content
@@ -107,6 +113,7 @@ public struct ContentItem: Codable, Sendable {
     self.items = items
     self.itemIdentifiers = itemIdentifiers
     self.tabs = tabs
+    self.columns = columns
     self.code = code
     self.syntax = syntax
     self.level = level
@@ -133,12 +140,14 @@ public struct ContentItem: Codable, Sendable {
     case text
     case type
     case title
+    case titleInlineContent
     case name
     case tokens
     case content
     case inlineContent
     case items
     case tabs
+    case columns
     case code
     case syntax
     case level
@@ -167,6 +176,8 @@ public struct ContentItem: Codable, Sendable {
     self.text = try container.decodeIfPresent(String.self, forKey: .text)
     self.type = try container.decodeIfPresent(String.self, forKey: .type)
     self.title = try container.decodeIfPresent(String.self, forKey: .title)
+    self.titleInlineContent = try container.decodeIfPresent(
+      [ContentItem].self, forKey: .titleInlineContent)
     self.name = try container.decodeIfPresent(String.self, forKey: .name)
     self.tokens = try container.decodeIfPresent([Token].self, forKey: .tokens)
     self.content = try container.decodeIfPresent([ContentItem].self, forKey: .content)
@@ -183,6 +194,7 @@ public struct ContentItem: Codable, Sendable {
       self.itemIdentifiers = nil
     }
     self.tabs = try container.decodeIfPresent([TabNavigatorTab].self, forKey: .tabs)
+    self.columns = try container.decodeIfPresent([ContentItem].self, forKey: .columns)
 
     self.code = try container.decodeIfPresent(CodeValue.self, forKey: .code)
     self.syntax = try container.decodeIfPresent(String.self, forKey: .syntax)
@@ -212,6 +224,7 @@ public struct ContentItem: Codable, Sendable {
     try container.encodeIfPresent(text, forKey: .text)
     try container.encodeIfPresent(type, forKey: .type)
     try container.encodeIfPresent(title, forKey: .title)
+    try container.encodeIfPresent(titleInlineContent, forKey: .titleInlineContent)
     try container.encodeIfPresent(name, forKey: .name)
     try container.encodeIfPresent(tokens, forKey: .tokens)
     try container.encodeIfPresent(content, forKey: .content)
@@ -222,6 +235,7 @@ public struct ContentItem: Codable, Sendable {
       try container.encodeIfPresent(itemIdentifiers, forKey: .items)
     }
     try container.encodeIfPresent(tabs, forKey: .tabs)
+    try container.encodeIfPresent(columns, forKey: .columns)
     try container.encodeIfPresent(code, forKey: .code)
     try container.encodeIfPresent(syntax, forKey: .syntax)
     try container.encodeIfPresent(level, forKey: .level)
@@ -304,6 +318,7 @@ public struct Parameter: Codable, Sendable {
 }
 
 public struct TopicSection: Codable, Sendable {
+  /// Empty when DocC emits an untitled topic group.
   public let title: String
   public let identifiers: [String]?
   public let children: [TopicSection]?
@@ -320,6 +335,15 @@ public struct TopicSection: Codable, Sendable {
     self.abstract = abstract
     self.anchor = anchor
   }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    self.title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+    self.identifiers = try container.decodeIfPresent([String].self, forKey: .identifiers)
+    self.children = try container.decodeIfPresent([TopicSection].self, forKey: .children)
+    self.abstract = try container.decodeIfPresent([ContentItem].self, forKey: .abstract)
+    self.anchor = try container.decodeIfPresent(String.self, forKey: .anchor)
+  }
 }
 
 public struct SeeAlsoSection: Codable, Sendable {
@@ -329,6 +353,12 @@ public struct SeeAlsoSection: Codable, Sendable {
   public init(title: String, identifiers: [String]? = nil) {
     self.title = title
     self.identifiers = identifiers
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    self.title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+    self.identifiers = try container.decodeIfPresent([String].self, forKey: .identifiers)
   }
 }
 
