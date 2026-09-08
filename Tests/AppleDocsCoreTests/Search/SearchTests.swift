@@ -6,10 +6,39 @@ import Testing
 @Suite("Search Parser Tests")
 struct SearchTests {
 
-  private let streamedResultsPayload = """
-    {"type":"results","data":[{"devsite":{"metadata":{"description":"SwiftUI is an innovative, exceptionally simple way to build user interfaces across all Apple platforms with the power of Swift.","title":"SwiftUI","sourceURL":"https://developer.apple.com/swiftui/"}}},{"documentation":{"metadata":{"title":"SwiftUI","availability":"iOS 13.0+ | iPadOS 13.0+ | macOS 10.15+","permalink":"https://developer.apple.com/documentation/swiftui","description":"Declare the user interface and behavior for your app on every platform.","hierarchy":"SwiftUI","kind":"symbol"}}},{"developer":{"metadata":{"itemTypes":["Session"],"titles":["SwiftUI Essentials"],"descriptions":["Take your first deep-dive into building an app with SwiftUI."],"permalinks":["https://developer.apple.com/videos/play/wwdc2019/216"],"projectNames":["WWDC19"]}}}]}
-    {"type":"done"}
-    """
+  /// A `quickSearch` event followed by a `search` payload split into diff events the way
+  /// Apple's backend streams them: each event appends to a buffer after dropping
+  /// `removeLast` characters from its end.
+  private let jsonlPayload: String = {
+    let quickSearch = """
+      {"kind":"quickSearch","response":{"results":[{"metadata":{"title":"SchemaMigrationPlan","permalink":"https://developer.apple.com/documentation/swiftdata/schemamigrationplan","description":"An interface for describing the evolution of a schema and how to migrate between specific versions.","hierarchy":"SwiftData > SchemaMigrationPlan","kind":"symbol","metadataKind":"documentation"},"origin":"documentation"},{"metadata":{"title":"Get Started - SwiftUI","sourceURL":"https://developer.apple.com/swiftui/get-started/","description":"SwiftUI provides everything you need to begin designing.","metadataKind":"webPage"},"origin":"developerWeb"}]}}
+      """
+
+    let streamedSearch = """
+      {"results":[{"excerpt":"An interface for describing the evolution of a schema","value":{"metadata":{"title":"SchemaMigrationPlan","permalink":"https://developer.apple.com/documentation/swiftdata/schemamigrationplan","description":"An interface for describing the evolution of a schema and how to migrate between specific versions.","hierarchy":"SwiftData > SchemaMigrationPlan","kind":"symbol","metadataKind":"documentation"},"origin":"documentation"}},{"excerpt":"Learn how to use schema macros","value":{"metadata":{"titles":["Model your schema with SwiftData"],"permalinks":["https://developer.apple.com/videos/play/wwdc2023/10195"],"descriptions":["Learn how to use schema macros and migration plans with SwiftData."],"projectNames":["WWDC23"],"itemTypes":["Video"],"deliveryLanguageCodes":["eng"],"metadataKind":"developer"},"origin":"developerWWDC"}},{"excerpt":"","value":{"metadata":{"title":"Swift.org - The Swift Programming Language","sourceURL":"https://www.swift.org/documentation/","description":"Documentation for the Swift programming language.","metadataKind":"webPage"},"origin":"swift"}}]}
+      """
+
+    let midpoint = streamedSearch.index(streamedSearch.startIndex, offsetBy: streamedSearch.count / 2)
+    let head = String(streamedSearch[..<midpoint])
+    let tail = String(streamedSearch[midpoint...])
+
+    func diffEvent(append: String, removeLast: Int) -> String {
+      let escaped = append
+        .replacingOccurrences(of: "\\", with: "\\\\")
+        .replacingOccurrences(of: "\"", with: "\\\"")
+      return "{\"kind\":\"search\",\"diff\":{\"append\":\"\(escaped)\",\"removeLast\":\(removeLast)}}"
+    }
+
+    return [
+      quickSearch,
+      "{\"kind\":\"quickSearchFinished\"}",
+      "",
+      diffEvent(append: head, removeLast: 0),
+      diffEvent(append: "PARTIAL", removeLast: 0),
+      diffEvent(append: tail, removeLast: "PARTIAL".count),
+      "{\"kind\":\"searchFinished\"}",
+    ].joined(separator: "\n")
+  }()
 
   private func loadFixture(_ name: String) throws -> String {
     let fixtureURL = Bundle.module.url(
@@ -188,24 +217,108 @@ struct SearchTests {
     #expect(results.isEmpty)
   }
 
-  @Test("Parses streamed search payload from live API shape")
-  func parseSearchEventsFromLivePayload() throws {
-    let results = try AppleDocsSearcher.parseSearchEvents(streamedResultsPayload)
+  @Test("Parses the JSONL response from Apple's MSC query backend")
+  func parseSearchEventsFromJSONL() throws {
+    let results = try AppleDocsSearcher.parseSearchEvents(jsonlPayload)
 
-    #expect(results.count == 3)
-    #expect(results[0].title == "SwiftUI")
-    #expect(results[0].url == "https://developer.apple.com/swiftui/")
-    #expect(results[0].type == "general")
+    // The documentation result appears in both channels and is reported once.
+    #expect(results.count == 4)
 
-    #expect(results[1].title == "SwiftUI")
-    #expect(results[1].url == "https://developer.apple.com/documentation/swiftui")
-    #expect(results[1].type == "documentation")
-    #expect(results[1].breadcrumbs == ["Documentation", "SwiftUI"])
-    #expect(results[1].tags == ["Symbol"])
+    #expect(results[0].title == "SchemaMigrationPlan")
+    #expect(
+      results[0].url == "https://developer.apple.com/documentation/swiftdata/schemamigrationplan")
+    #expect(
+      results[0].description
+        == "An interface for describing the evolution of a schema and how to migrate between specific versions."
+    )
+    #expect(results[0].breadcrumbs == ["SwiftData", "SchemaMigrationPlan"])
+    #expect(results[0].tags == ["symbol"])
+    #expect(results[0].type == "documentation")
 
-    #expect(results[2].title == "SwiftUI Essentials")
-    #expect(results[2].url == "https://developer.apple.com/videos/play/wwdc2019/216")
+    #expect(results[1].title == "Get Started - SwiftUI")
+    #expect(results[1].url == "https://developer.apple.com/swiftui/get-started/")
+    #expect(results[1].breadcrumbs.isEmpty)
+    #expect(results[1].tags.isEmpty)
+    #expect(results[1].type == "general")
+
+    #expect(results[2].title == "Model your schema with SwiftData")
+    #expect(results[2].url == "https://developer.apple.com/videos/play/wwdc2023/10195")
+    #expect(
+      results[2].description == "Learn how to use schema macros and migration plans with SwiftData.")
+    #expect(results[2].breadcrumbs == ["WWDC23"])
+    #expect(results[2].tags == ["Video", "eng"])
     #expect(results[2].type == "video")
-    #expect(results[2].tags == ["Session", "WWDC19"])
+
+    #expect(results[3].title == "Swift.org - The Swift Programming Language")
+    #expect(results[3].url == "https://www.swift.org/documentation/")
+    #expect(results[3].type == "general")
+  }
+
+  @Test("Ignores results carried by response kinds that were not requested")
+  func ignoresUnrequestedResponseKinds() throws {
+    let payload = """
+      {"kind":"ask","response":{"results":[{"metadata":{"title":"Generated answer","permalink":"https://developer.apple.com/generated","metadataKind":"documentation"},"origin":"documentation"}]}}
+      {"kind":"quickSearch","response":{"results":[{"metadata":{"title":"WKWebView","permalink":"https://developer.apple.com/documentation/webkit/wkwebview","description":"An object that displays interactive web content.","hierarchy":"WebKit > WKWebView","kind":"symbol","metadataKind":"documentation"},"origin":"documentation"}]}}
+      """
+
+    let results = try AppleDocsSearcher.parseSearchEvents(payload)
+
+    #expect(results.count == 1)
+    #expect(results[0].title == "WKWebView")
+  }
+
+  @Test("Returns empty results when Apple search has no matches or omits the results array")
+  func emptyJSONLResults() throws {
+    let noMatches = """
+      {"kind":"quickSearch","response":{"results":[]}}
+      {"kind":"quickSearchFinished"}
+      {"kind":"searchFinished"}
+      """
+    #expect(try AppleDocsSearcher.parseSearchEvents(noMatches).isEmpty)
+
+    let noResultsArray = """
+      {"kind":"quickSearch","response":{"featuredResults":[]}}
+      """
+    #expect(try AppleDocsSearcher.parseSearchEvents(noResultsArray).isEmpty)
+  }
+
+  @Test("Skips results that lack a title or URL")
+  func skipsIncompleteResults() throws {
+    let payload = """
+      {"kind":"quickSearch","response":{"results":[{"metadata":{"title":"","permalink":"https://developer.apple.com/documentation/foo","metadataKind":"documentation"}},{"metadata":{"titles":["Untitled"],"permalinks":[],"metadataKind":"developer"}},{"metadata":{"title":"Unknown kind","permalink":"https://developer.apple.com/x","metadataKind":"mystery"}}]}}
+      """
+
+    #expect(try AppleDocsSearcher.parseSearchEvents(payload).isEmpty)
+  }
+
+  @Test("Throws when Apple's backend returns malformed JSONL")
+  func throwsOnMalformedJSONL() {
+    #expect(throws: AppleDocsError.self) {
+      try AppleDocsSearcher.parseSearchEvents("not json")
+    }
+  }
+
+  @Test("Builds the request body Apple's query endpoint expects")
+  func buildsRequestBody() throws {
+    let data = try AppleDocsSearcher.makeRequestBody(query: "SchemaMigrationPlan", locale: "en")
+    let body = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+    #expect(body["text"] as? String == "SchemaMigrationPlan")
+    #expect(body["targetResultLocale"] as? String == "en")
+    #expect(body["includedResponses"] as? [String] == ["quickSearch", "search"])
+  }
+
+  @Test("Maps system locales to Apple's accepted target result locales")
+  func resolvesTargetResultLocale() {
+    #expect(AppleDocsSearcher.resolveTargetResultLocale("en-US-u-hc-h23") == "en")
+    #expect(AppleDocsSearcher.resolveTargetResultLocale("en_US") == "en")
+    #expect(AppleDocsSearcher.resolveTargetResultLocale("en_GB@calendar=gregorian") == "en")
+    #expect(AppleDocsSearcher.resolveTargetResultLocale("ja-JP") == "ja-JP")
+    #expect(AppleDocsSearcher.resolveTargetResultLocale("ja_JP.UTF-8") == "ja-JP")
+    #expect(AppleDocsSearcher.resolveTargetResultLocale("es-419") == "es-lamr")
+    #expect(AppleDocsSearcher.resolveTargetResultLocale("zh-Hans-CN") == "zh-CN")
+    #expect(AppleDocsSearcher.resolveTargetResultLocale("nl-NL") == "en")
+    #expect(AppleDocsSearcher.resolveTargetResultLocale("C") == "en")
+    #expect(AppleDocsSearcher.resolveTargetResultLocale("") == "en")
   }
 }

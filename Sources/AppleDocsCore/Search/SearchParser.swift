@@ -38,69 +38,55 @@ public struct SearchResponse: Codable, Sendable {
 
 public struct AppleDocsSearcher: Sendable {
 
-  private struct SearchStreamEvent: Decodable {
-    let type: String
-    let data: [SearchResultEnvelope]?
-  }
+  // Apple's current search backend, discovered from
+  // https://developer.apple.com/search/scripts/search.js (September 2026).
+  // Earlier backends (/search/services/search.php, /api/v1/search) now return 404.
+  // This one answers only in JSONL: one event per line, each tagged with a `kind`.
+  public static let searchServiceURL = "https://devintserv.msc.sbz.apple.com/api/v1/query"
 
-  private struct SearchResultEnvelope: Decodable {
-    let documentation: DocumentationEntry?
-    let developer: DeveloperEntry?
-    let devsite: DevsiteEntry?
-  }
+  // The backend rejects requests that do not name the response channels they want.
+  // `quickSearch` carries the top typeahead matches in a single event and `search`
+  // streams the full ranked list. Apple's own page also asks for `ask` (a generated
+  // answer), which is not something this tool reports.
+  static let includedResponses = ["quickSearch", "search"]
 
-  private struct DocumentationEntry: Decodable {
-    let metadata: DocumentationMetadata
-  }
+  static let defaultTargetResultLocale = "en"
 
-  private struct DocumentationMetadata: Decodable {
-    let title: String
-    let availability: String?
-    let permalink: String
-    let description: String?
-    let hierarchy: String?
-    let kind: String?
-  }
-
-  private struct DeveloperEntry: Decodable {
-    let metadata: DeveloperMetadata
-  }
-
-  private struct DeveloperMetadata: Decodable {
-    let titles: [String]?
-    let descriptions: [String]?
-    let permalinks: [String]?
-    let itemTypes: [String]?
-    let projectNames: [String]?
-  }
-
-  private struct DevsiteEntry: Decodable {
-    let metadata: DevsiteMetadata
-  }
-
-  private struct DevsiteMetadata: Decodable {
-    let title: String
-    let description: String?
-    let sourceURL: String
-  }
+  // Apple's backend uses BCP-47 tags ("en", "ja-JP") rather than POSIX locales ("en_US").
+  // Mirrors https://developer.apple.com/search/scripts/helpers.js
+  private static let targetResultLocales: [String: String] = [
+    "en": "en",
+    "zh-CN": "zh-CN",
+    "ja-JP": "ja-JP",
+    "ko-KR": "ko-KR",
+    "fr-FR": "fr-FR",
+    "de-DE": "de-DE",
+    "pt-BR": "pt-BR",
+    "es-LA": "es-lamr",
+    "es-419": "es-lamr",
+    "it-IT": "it-IT",
+  ]
 
   public static func search(query: String) async throws -> SearchResponse {
-    guard let url = URL(string: "https://developer.apple.com/search/services/search.php") else {
-      throw AppleDocsError.invalidURL("https://developer.apple.com/search/services/search.php")
+    guard let url = URL(string: searchServiceURL) else {
+      throw AppleDocsError.invalidURL(searchServiceURL)
     }
 
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     request.setValue(Fetcher.randomUserAgent(), forHTTPHeaderField: "User-Agent")
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    request.httpBody = try JSONEncoder().encode([
-      "q": query,
-      "targetResultLocale": "en",
-    ])
+    request.setValue("application/jsonl", forHTTPHeaderField: "Accept")
+    // The MSC backend requires a browser-style Origin/Referer pair to accept the request.
+    request.setValue("https://developer.apple.com", forHTTPHeaderField: "Origin")
+    request.setValue("https://developer.apple.com/search/", forHTTPHeaderField: "Referer")
+    request.httpBody = try makeRequestBody(query: query)
 
     let (data, response) = try await URLSession.shared.data(for: request)
 
-    if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
+    if let httpResponse = response as? HTTPURLResponse,
+      !(200..<300).contains(httpResponse.statusCode)
+    {
       throw AppleDocsError.httpError(
         statusCode: httpResponse.statusCode, url: url.absoluteString)
     }
@@ -113,112 +99,199 @@ public struct AppleDocsSearcher: Sendable {
     return SearchResponse(query: query, results: results)
   }
 
+  static func makeRequestBody(
+    query: String, locale: String = resolveTargetResultLocale()
+  ) throws -> Data {
+    let body: [String: Any] = [
+      "text": query,
+      "targetResultLocale": locale,
+      "includedResponses": includedResponses,
+    ]
+    return try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+  }
+
+  static func resolveTargetResultLocale(_ identifier: String = Locale.current.identifier)
+    -> String
+  {
+    // Normalize POSIX-style identifiers ("en_US@calendar=gregorian", "en_US.UTF-8").
+    var normalized = identifier
+    if let at = normalized.firstIndex(of: "@") { normalized = String(normalized[..<at]) }
+    if let dot = normalized.firstIndex(of: ".") { normalized = String(normalized[..<dot]) }
+    normalized = normalized.replacingOccurrences(of: "_", with: "-")
+
+    let subtags = normalized.split(separator: "-").map(String.init)
+    guard let language = subtags.first?.lowercased(), !language.isEmpty,
+      language != "c", language != "posix"
+    else {
+      return defaultTargetResultLocale
+    }
+
+    // The region is the first subtag after the language that looks like a region
+    // (two letters or three digits); script tags like "Hans" are skipped.
+    let region = subtags.dropFirst().first { subtag in
+      (subtag.count == 2 && subtag.allSatisfy(\.isLetter))
+        || (subtag.count == 3 && subtag.allSatisfy(\.isNumber))
+    }?.uppercased()
+
+    let languageRegion = region.map { "\(language)-\($0)" } ?? language
+    return targetResultLocales[languageRegion]
+      ?? targetResultLocales[language]
+      ?? defaultTargetResultLocale
+  }
+
+  // The response body is JSONL: one JSON object per line. A `quickSearch` event
+  // carries its results inline, while `search` events stream the full list as
+  // diffs against a JSON text buffer, so those results can only be read once
+  // every line has been applied. Any other kind (`quickSearchFinished`,
+  // `searchFinished`, `ask`) is not part of the result set and is skipped.
   static func parseSearchEvents(_ payload: String) throws -> [SearchResult] {
-    let decoder = JSONDecoder()
+    var items: [Any] = []
+    var streamedSearch = ""
 
     for line in payload.split(whereSeparator: \.isNewline) {
       let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
       guard !trimmed.isEmpty else { continue }
 
-      let event = try decoder.decode(
-        SearchStreamEvent.self, from: Data(trimmed.utf8))
+      guard let event = try parseJSON(trimmed) as? [String: Any] else { continue }
 
-      guard event.type == "results", let items = event.data else { continue }
-      return items.compactMap(normalizeSearchResult)
+      switch event["kind"] as? String {
+      case "quickSearch":
+        items.append(contentsOf: resultsOf(event["response"]))
+      case "search":
+        streamedSearch = applySearchDiff(streamedSearch, diff: event["diff"])
+      default:
+        continue
+      }
     }
 
-    return []
+    if !streamedSearch.isEmpty {
+      items.append(contentsOf: resultsOf(try parseJSON(streamedSearch)))
+    }
+
+    return extractSearchResults(items)
   }
 
-  private static func normalizeSearchResult(_ item: SearchResultEnvelope) -> SearchResult? {
-    if let documentation = item.documentation?.metadata {
-      var breadcrumbs = ["Documentation"]
-      if let hierarchy = documentation.hierarchy?.trimmingCharacters(in: .whitespacesAndNewlines),
-        !hierarchy.isEmpty
-      {
-        breadcrumbs.append(
-          contentsOf: hierarchy.split(separator: ">").map {
-            $0.trimmingCharacters(in: .whitespacesAndNewlines)
-          }.filter { !$0.isEmpty })
-      }
+  // Each `search` event appends to the buffer after dropping `removeLast`
+  // characters from the end of what came before.
+  private static func applySearchDiff(_ buffer: String, diff: Any?) -> String {
+    guard let diff = diff as? [String: Any] else { return buffer }
 
-      var tags: [String] = []
-      if let kind = documentation.kind {
-        switch kind {
-        case "sampleCode":
-          tags.append("Sample Code")
-        case "article":
-          tags.append("Article")
-        case "symbol":
-          tags.append("Symbol")
-        default:
-          tags.append(kind)
-        }
-      }
+    let removeLast = (diff["removeLast"] as? NSNumber)?.intValue ?? 0
+    let append = diff["append"] as? String ?? ""
 
-      if let availability = documentation.availability {
-        let lowered = availability.lowercased()
-        if lowered.contains("deprecated") { tags.append("Deprecated") }
-        if lowered.contains("beta") { tags.append("Beta") }
-      }
+    // `removeLast` is measured the way Apple's JavaScript client measures strings:
+    // in UTF-16 code units, not in Swift Characters.
+    let utf16 = Array(buffer.utf16)
+    let keptCount = max(0, utf16.count - max(0, removeLast))
+    let kept = String(decoding: utf16[..<keptCount], as: UTF16.self)
+    return kept + append
+  }
 
-      return SearchResult(
-        title: documentation.title,
-        url: documentation.permalink,
-        description: documentation.description ?? "",
-        breadcrumbs: breadcrumbs,
-        tags: tags,
-        type: documentation.kind == "sampleCode" ? "sample_code" : "documentation"
-      )
+  private static func parseJSON(_ text: String) throws -> Any {
+    do {
+      return try JSONSerialization.jsonObject(with: Data(text.utf8), options: [.fragmentsAllowed])
+    } catch {
+      throw AppleDocsError.decodingError(
+        underlying: NSError(
+          domain: "AppleDocsSearcher", code: -1,
+          userInfo: [NSLocalizedDescriptionKey: "Search response was not valid JSON"]))
+    }
+  }
+
+  private static func resultsOf(_ container: Any?) -> [Any] {
+    guard let container = container as? [String: Any] else { return [] }
+    return container["results"] as? [Any] ?? []
+  }
+
+  // The same page can be reported by more than one channel, so keep the first
+  // mention of each URL and drop the rest.
+  private static func extractSearchResults(_ items: [Any]) -> [SearchResult] {
+    var seen = Set<String>()
+    var results: [SearchResult] = []
+
+    for item in items {
+      guard let result = normalizeSearchResult(item), !seen.contains(result.url) else { continue }
+      seen.insert(result.url)
+      results.append(result)
     }
 
-    if let developer = item.developer?.metadata {
-      let itemType = developer.itemTypes?.first ?? "Video"
-      let normalizedType: String
-      switch itemType {
-      case "Session", "Special Event", "Video":
-        normalizedType = "video"
-      case "Lab by Appointment", "Get-Together":
-        normalizedType = "lab"
-      default:
-        normalizedType = "developer"
-      }
+    return results
+  }
 
-      var tags: [String] = []
-      if !itemType.isEmpty { tags.append(itemType) }
-      if let projectName = developer.projectNames?.first, !projectName.isEmpty {
-        tags.append(projectName)
-      }
+  // A result is `{ metadata, origin }`, and `metadata.metadataKind` says how to read it:
+  //   - "documentation" for reference pages, with singular fields
+  //   - "developer" for WWDC sessions and other media, with parallel arrays
+  //   - "webPage" for marketing and swift.org pages, keyed by `sourceURL`
+  // Streamed `search` results wrap the payload in `value` next to a match excerpt.
+  static func normalizeSearchResult(_ item: Any) -> SearchResult? {
+    guard let record = item as? [String: Any] else { return nil }
+    let unwrapped = record["value"] as? [String: Any] ?? record
+    guard let metadata = unwrapped["metadata"] as? [String: Any] else { return nil }
 
-      guard let title = developer.titles?.first,
-        let url = developer.permalinks?.first,
-        !title.isEmpty, !url.isEmpty
-      else {
-        return nil
-      }
+    switch metadata["metadataKind"] as? String {
+    case "documentation":
+      guard let title = stringValue(metadata["title"]),
+        let url = stringValue(metadata["permalink"])
+      else { return nil }
 
       return SearchResult(
         title: title,
         url: url,
-        description: developer.descriptions?.first ?? "",
-        breadcrumbs: [],
-        tags: tags,
-        type: normalizedType
+        description: stringValue(metadata["description"]) ?? "",
+        breadcrumbs: splitHierarchy(stringValue(metadata["hierarchy"])),
+        tags: [stringValue(metadata["kind"])].compactMap { $0 },
+        type: "documentation"
       )
-    }
 
-    if let devsite = item.devsite?.metadata {
+    case "developer":
+      guard let title = firstString(metadata["titles"]),
+        let url = firstString(metadata["permalinks"])
+      else { return nil }
+
+      let itemType = firstString(metadata["itemTypes"])
       return SearchResult(
-        title: devsite.title,
-        url: devsite.sourceURL,
-        description: devsite.description ?? "",
+        title: title,
+        url: url,
+        description: firstString(metadata["descriptions"]) ?? "",
+        breadcrumbs: [firstString(metadata["projectNames"])].compactMap { $0 },
+        tags: [itemType, firstString(metadata["deliveryLanguageCodes"])].compactMap { $0 },
+        type: (itemType ?? "developer").lowercased()
+      )
+
+    case "webPage":
+      guard let title = stringValue(metadata["title"]),
+        let url = stringValue(metadata["sourceURL"])
+      else { return nil }
+
+      return SearchResult(
+        title: title,
+        url: url,
+        description: stringValue(metadata["description"]) ?? "",
         breadcrumbs: [],
         tags: [],
         type: "general"
       )
-    }
 
-    return nil
+    default:
+      return nil
+    }
+  }
+
+  private static func stringValue(_ value: Any?) -> String? {
+    guard let string = value as? String, !string.isEmpty else { return nil }
+    return string
+  }
+
+  private static func firstString(_ value: Any?) -> String? {
+    guard let array = value as? [Any] else { return nil }
+    return array.lazy.compactMap { stringValue($0) }.first
+  }
+
+  private static func splitHierarchy(_ hierarchy: String?) -> [String] {
+    guard let hierarchy else { return [] }
+    return hierarchy.components(separatedBy: " > ")
+      .map { $0.trimmingCharacters(in: .whitespaces) }
+      .filter { !$0.isEmpty }
   }
 
   public static func parseSearchResults(html: String) throws -> [SearchResult] {
