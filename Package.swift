@@ -13,6 +13,7 @@ let package = Package(
     .package(url: "https://github.com/mehmetbaykar/swift-fast-mcp", from: "2.7.0"),
     .package(url: "https://github.com/scinfu/SwiftSoup", from: "2.13.9"),
     .package(url: "https://github.com/hummingbird-project/hummingbird", from: "2.26.0"),
+    .package(url: "https://github.com/apple/swift-crypto.git", from: "4.5.2"),
   ],
   targets: [
     .target(
@@ -25,6 +26,7 @@ let package = Package(
         "AppleDocsCore",
         .product(name: "FastMCP", package: "swift-fast-mcp"),
         .product(name: "Hummingbird", package: "hummingbird"),
+        .product(name: "Crypto", package: "swift-crypto"),
       ],
       exclude: ["Resources/llms.txt"]
     ),
@@ -39,6 +41,7 @@ let package = Package(
         "swift-developer-docs-mcp",
         .product(name: "Hummingbird", package: "hummingbird"),
         .product(name: "HummingbirdTesting", package: "hummingbird"),
+        .product(name: "Crypto", package: "swift-crypto"),
       ]
     ),
   ]

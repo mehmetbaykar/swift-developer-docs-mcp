@@ -56,11 +56,13 @@ struct ServerApp {
 
     router.get("/sitemap.xml") { request, _ -> Response in
       staticTextResponse(
-        ServerApp.sitemapXML(for: request),
+        ServerApp.sitemapXML(origin: origin(for: request)),
         contentType: "application/xml; charset=utf-8",
         cacheControl: "public, max-age=3600, s-maxage=86400"
       )
     }
+
+    addDiscoveryRoutes(to: router)
 
     router.get("/bot") { _, _ -> Response in
       Response(
@@ -294,17 +296,79 @@ struct ServerApp {
   }
 
   private func rootResponse(request: Request) -> Response {
-    if ServerApp.acceptsMarkdown(request) {
-      return staticTextResponse(
-        ServerApp.llmsTxt,
-        contentType: "text/markdown; charset=utf-8"
+    var response =
+      ServerApp.acceptsMarkdown(request)
+      ? staticTextResponse(ServerApp.llmsTxt, contentType: "text/markdown; charset=utf-8")
+      : staticTextResponse(ServerApp.indexHTML, contentType: "text/html; charset=utf-8")
+    response.headers[.init("Link")!] = AgentDiscovery.linkHeader
+    return response
+  }
+
+  // MARK: - Agent discovery
+
+  private func origin(for request: Request) -> String {
+    AgentDiscovery.origin(for: request, fallbackHost: "\(hostname):\(port)")
+  }
+
+  private func addDiscoveryRoutes(to router: Router<BasicRequestContext>) {
+    let mcpServer = AppleDocsMCPServer()
+    let skillPath = "/.well-known/agent-skills/\(AgentDiscovery.skillName)/SKILL.md"
+
+    for path in ["/SKILL.md", skillPath].map({ RouterPath($0) }) {
+      router.on(path, method: .get) { request, _ -> Response in
+        discoveryResponse(
+          AgentDiscovery.skillMarkdown(origin: origin(for: request)),
+          contentType: "text/markdown; charset=utf-8"
+        )
+      }
+      router.on(path, method: .head) { request, _ -> Response in
+        var response = discoveryResponse(
+          AgentDiscovery.skillMarkdown(origin: origin(for: request)),
+          contentType: "text/markdown; charset=utf-8"
+        )
+        response.body = .init()
+        return response
+      }
+    }
+
+    router.on("/.well-known/agent-skills/index.json", method: .get) { request, _ -> Response in
+      discoveryResponse(
+        AgentDiscovery.skillIndex(origin: origin(for: request)),
+        contentType: "application/json; charset=utf-8"
+      )
+    }
+    router.on("/.well-known/agent-skills/index.json", method: .head) { request, _ -> Response in
+      var response = discoveryResponse(
+        AgentDiscovery.skillIndex(origin: origin(for: request)),
+        contentType: "application/json; charset=utf-8"
+      )
+      response.body = .init()
+      return response
+    }
+
+    router.get("/.well-known/api-catalog") { request, _ -> Response in
+      discoveryResponse(
+        AgentDiscovery.apiCatalog(origin: origin(for: request)),
+        contentType: "application/linkset+json; charset=utf-8"
       )
     }
 
-    return staticTextResponse(
-      ServerApp.indexHTML,
-      contentType: "text/html; charset=utf-8"
-    )
+    router.get("/.well-known/agent-card.json") { request, _ -> Response in
+      discoveryResponse(
+        AgentDiscovery.agentCard(
+          origin: origin(for: request),
+          serverName: mcpServer.name,
+          version: mcpServer.version
+        ),
+        contentType: "application/json; charset=utf-8"
+      )
+    }
+  }
+
+  private func discoveryResponse(_ body: String, contentType: String) -> Response {
+    var response = staticTextResponse(body, contentType: contentType)
+    response.headers[.accessControlAllowOrigin] = "*"
+    return response
   }
 
   private func staticTextResponse(
@@ -475,11 +539,8 @@ struct ServerApp {
     Sitemap: /sitemap.xml
     """
 
-  static func sitemapXML(for request: Request) -> String {
-    let scheme = request.headers[.init("X-Forwarded-Proto")!] ?? "http"
-    let host = request.headers[.init("X-Forwarded-Host")!] ?? "127.0.0.1"
-    let origin = "\(scheme)://\(host)"
-    return """
+  static func sitemapXML(origin: String) -> String {
+    """
       <?xml version="1.0" encoding="UTF-8"?>
       <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
         <url>
@@ -539,6 +600,15 @@ struct ServerApp {
     Generated documentation responses include `X-Robots-Tag: noindex, nofollow,
     noarchive`. Crawlers should use `/robots.txt` and `/sitemap.xml`; the sitemap
     intentionally lists only the service entry points, not proxied Apple pages.
+
+    ## Agent Discovery
+
+    - `GET /SKILL.md` - Agent skill describing this HTTP service.
+    - `GET /.well-known/agent-skills/index.json` - agentskills.io discovery index.
+    - `GET /.well-known/agent-card.json` - A2A agent card.
+    - `GET /.well-known/api-catalog` - RFC 9727 API catalog (`application/linkset+json`).
+
+    `GET /` also advertises these documents in a `Link` header.
 
     ## Available MCP Tools
 
@@ -634,6 +704,7 @@ struct ServerApp {
             <ul>
               <li>Read the service description at <a href="/llms.txt"><code>/llms.txt</code></a>.</li>
               <li>Use <code>/documentation/*</code>, <code>/search</code>, <code>/design/*</code>, <code>/videos/*</code>, and <code>/external/*</code> for REST access.</li>
+              <li>Agents can discover this service via <a href="/SKILL.md"><code>/SKILL.md</code></a>, <a href="/.well-known/agent-card.json"><code>/.well-known/agent-card.json</code></a>, and <a href="/.well-known/api-catalog"><code>/.well-known/api-catalog</code></a>.</li>
               <li>Run the binary without a subcommand to start the MCP server over stdio.</li>
             </ul>
           </section>

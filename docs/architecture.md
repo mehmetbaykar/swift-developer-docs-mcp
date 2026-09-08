@@ -78,7 +78,7 @@ Sources/AppleDocsCore/
 │   ├── ReferenceRenderer.swift  — Reference doc → Markdown
 │   └── ReferenceFetcher.swift   — Injectable reference doc fetching
 ├── Search/
-│   ├── SearchParser.swift       — SwiftSoup HTML parsing
+│   ├── SearchParser.swift       — Apple search JSONL client + result normalization
 │   ├── SearchClient.swift       — Injectable search struct
 │   └── SearchTypes.swift        — SearchResult, SearchOptions
 ├── HIG/
@@ -115,6 +115,7 @@ Sources/swift-developer-docs-mcp/
 │   └── FetchVideoTranscriptTool.swift — fetchAppleVideoTranscript
 ├── Server/
 │   ├── ServerApp.swift          — Hummingbird routes + llms.txt
+│   ├── AgentDiscovery.swift     — SKILL.md, agent card, api-catalog, agent-skills index
 │   ├── SecurityHeadersMiddleware.swift
 │   ├── CORSMiddleware.swift
 │   └── TrailingSlashMiddleware.swift
