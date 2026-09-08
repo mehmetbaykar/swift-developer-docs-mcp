@@ -304,8 +304,6 @@ struct ServerApp {
     return response
   }
 
-  // MARK: - Agent discovery
-
   private func origin(for request: Request) -> String {
     AgentDiscovery.origin(for: request, fallbackHost: "\(hostname):\(port)")
   }

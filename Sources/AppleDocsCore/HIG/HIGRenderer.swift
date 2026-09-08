@@ -318,8 +318,6 @@ public struct HIGRenderer: Sendable {
       Self.mapHIGAsideStyleToCallout(rawType), content: asideContent)
   }
 
-  // MARK: - Tab navigator rendering
-
   static func renderHIGTabNavigator(
     _ item: ContentItem,
     references: [String: HIGReferenceItem]
@@ -328,8 +326,6 @@ public struct HIGRenderer: Sendable {
 
     var markdown = ""
     for tab in tabs {
-      // A leading heading that repeats the tab title ("Small" / "Small (default 38mm)")
-      // already labels the tab.
       let label = tab.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
       let leadingHeading: String? = {
         guard let first = tab.content?.first, first.type == "heading" else { return nil }

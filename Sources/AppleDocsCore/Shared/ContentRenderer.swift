@@ -95,8 +95,6 @@ public struct ContentRenderer: Sendable {
     }.joined()
   }
 
-  // MARK: - Link Resolution
-
   static func resolveReferenceTitle(
     _ reference: ContentItem?, references: [String: ContentItem]?, depth: Int = 0,
     externalOrigin: String? = nil
@@ -109,7 +107,6 @@ public struct ContentRenderer: Sendable {
       if let rendered = nonEmpty(rendered) { return rendered }
     }
     guard let title = nonEmpty(reference.title) else { return nil }
-    // Older DocC pages omit titleInlineContent, so symbols still need their code span.
     return reference.role == "symbol" ? "`\(title)`" : title
   }
 
@@ -232,9 +229,8 @@ public struct ContentRenderer: Sendable {
     externalOrigin: String?
   ) -> String {
     guard let inlineContent = item.inlineContent else { return "" }
-    // Inline depth is budgeted separately from block depth.
     let text = renderInlineContent(
-      inlineContent, references: references, depth: 0, externalOrigin: externalOrigin)
+      inlineContent, references: references, externalOrigin: externalOrigin)
     return "\(text)\n\n"
   }
 
@@ -273,8 +269,6 @@ public struct ContentRenderer: Sendable {
     return formatList(itemContents, ordered: ordered)
   }
 
-  // MARK: - Markdown Formatting
-
   public static func formatList(_ itemContents: [String], ordered: Bool) -> String {
     guard !itemContents.isEmpty else { return "" }
     let items = itemContents.enumerated().map { index, content in
@@ -290,7 +284,6 @@ public struct ContentRenderer: Sendable {
       return "\(marker.replacingOccurrences(of: #"\s+$"#, with: "", options: .regularExpression))\n"
     }
 
-    // Keep nested lists tight under their parent item; other paragraph breaks stay.
     let tightened = trimmed.replacingOccurrences(
       of: #"\n{2,}(?=(?:[-*]|\d+\.) )"#, with: "\n", options: .regularExpression)
     let indent = String(repeating: " ", count: marker.count)
@@ -616,8 +609,6 @@ public struct ContentRenderer: Sendable {
     }
     return markdown
   }
-
-  // MARK: - Topic / See Also Rendering
 
   public static func renderTopicSections(
     _ topics: [TopicSection], variants: [Variant]?, references: [String: ContentItem]?,

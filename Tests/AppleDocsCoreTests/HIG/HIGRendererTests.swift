@@ -324,8 +324,6 @@ struct HIGRendererTests {
     #expect(result.contains("Right"))
   }
 
-  // MARK: - Tab navigator rendering
-
   private func paragraph(_ text: String) -> ContentItem {
     ContentItem(type: "paragraph", inlineContent: [ContentItem(text: text, type: "text")])
   }
@@ -413,8 +411,6 @@ struct HIGRendererTests {
 
     #expect(result == "- Parent\n  - Child\n\n")
   }
-
-  // MARK: - Table of contents spacing
 
   @Test("Separates ToC article lists from the next heading with a blank line")
   func tocHeadingSpacing() {

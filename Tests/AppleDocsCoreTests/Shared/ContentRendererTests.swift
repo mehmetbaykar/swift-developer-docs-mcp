@@ -971,8 +971,6 @@ struct ContentRendererTests {
     }
   }
 
-  // MARK: - Link Title Resolution
-
   @Suite("Link Title Resolution")
   struct LinkTitleResolution {
     private func paragraph(_ inline: [ContentItem]) -> [ContentItem] {
@@ -1142,8 +1140,6 @@ struct ContentRendererTests {
       #expect(reference.titleInlineContent?.count == 1)
     }
   }
-
-  // MARK: - Markdown Formatting
 
   @Suite("Markdown Formatting")
   struct MarkdownFormatting {

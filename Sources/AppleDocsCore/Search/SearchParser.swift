@@ -38,16 +38,10 @@ public struct SearchResponse: Codable, Sendable {
 
 public struct AppleDocsSearcher: Sendable {
 
-  // Backend used by https://developer.apple.com/search/scripts/search.js; the older
-  // developer.apple.com search endpoints return 404.
   public static let searchServiceURL = "https://devintserv.msc.sbz.apple.com/api/v1/query"
-
-  // Required by the backend; `ask` (a generated answer) is deliberately excluded.
   static let includedResponses = ["quickSearch", "search"]
-
   static let defaultTargetResultLocale = "en"
 
-  // Mirrors https://developer.apple.com/search/scripts/helpers.js
   private static let targetResultLocales: [String: String] = [
     "en": "en",
     "zh-CN": "zh-CN",
@@ -130,8 +124,6 @@ public struct AppleDocsSearcher: Sendable {
       ?? defaultTargetResultLocale
   }
 
-  // `quickSearch` events carry results inline; `search` events stream the result list
-  // as diffs against a JSON text buffer that is only parseable once complete.
   static func parseSearchEvents(_ payload: String) throws -> [SearchResult] {
     var items: [Any] = []
     var streamedSearch = ""
