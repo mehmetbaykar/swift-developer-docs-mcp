@@ -202,29 +202,15 @@ public struct HIGRenderer: Sendable {
         case .multiple(let arr): code = arr.joined(separator: "\n")
         }
       }
-      let syntax = item.syntax ?? "swift"
+      let syntax = ContentRenderer.normalizeFenceLanguage(item.syntax ?? "swift")
       markdown += "```\(syntax)\n\(code)\n```\n\n"
 
-    case "unorderedList":
+    case "unorderedList", "orderedList":
       if let items = item.items {
-        for listItem in items {
-          let itemText = Self.renderHIGContent(
-            sections: listItem.content ?? [], references: references)
-          markdown +=
-            "- \(itemText.replacingOccurrences(of: "\\n\\n$", with: "", options: .regularExpression))\n"
+        let itemContents = items.map { listItem in
+          Self.renderHIGContent(sections: listItem.content ?? [], references: references)
         }
-        markdown += "\n"
-      }
-
-    case "orderedList":
-      if let items = item.items {
-        for (index, listItem) in items.enumerated() {
-          let itemText = Self.renderHIGContent(
-            sections: listItem.content ?? [], references: references)
-          markdown +=
-            "\(index + 1). \(itemText.replacingOccurrences(of: "\\n\\n$", with: "", options: .regularExpression))\n"
-        }
-        markdown += "\n"
+        markdown += ContentRenderer.formatList(itemContents, ordered: item.type == "orderedList")
       }
 
     case "links":
@@ -235,6 +221,9 @@ public struct HIGRenderer: Sendable {
 
     case "aside":
       markdown += Self.renderHIGAside(item, references: references)
+
+    case "tabNavigator":
+      markdown += Self.renderHIGTabNavigator(item, references: references)
 
     case "row":
       markdown += Self.renderHIGRow(item, references: references)
@@ -323,15 +312,36 @@ public struct HIGRenderer: Sendable {
     references: [String: HIGReferenceItem]
   ) -> String {
     let rawType = (item.style ?? item.name ?? "note").lowercased()
-    let calloutType = Self.mapHIGAsideStyleToCallout(rawType)
     let asideContent =
-      item.content != nil
-      ? Self.renderHIGContent(sections: item.content!, references: references)
-      : ""
-    let cleanContent = asideContent.trimmingCharacters(in: .whitespacesAndNewlines)
-      .replacingOccurrences(of: "\n", with: "\n> ")
-    if cleanContent.isEmpty { return "" }
-    return "> [!\(calloutType)]\n> \(cleanContent)\n\n"
+      item.content.map { Self.renderHIGContent(sections: $0, references: references) } ?? ""
+    return ContentRenderer.formatCallout(
+      Self.mapHIGAsideStyleToCallout(rawType), content: asideContent)
+  }
+
+  static func renderHIGTabNavigator(
+    _ item: ContentItem,
+    references: [String: HIGReferenceItem]
+  ) -> String {
+    guard let tabs = item.tabs, !tabs.isEmpty else { return "" }
+
+    var markdown = ""
+    for tab in tabs {
+      let label = tab.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+      let leadingHeading: String? = {
+        guard let first = tab.content?.first, first.type == "heading" else { return nil }
+        return (first.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+      }()
+      let headingRepeatsTitle =
+        leadingHeading.map { $0.lowercased().hasPrefix(label.lowercased()) } ?? false
+
+      if !label.isEmpty && !headingRepeatsTitle {
+        markdown += "**\(label)**\n\n"
+      }
+      if let content = tab.content, !content.isEmpty {
+        markdown += Self.renderHIGContent(sections: content, references: references)
+      }
+    }
+    return markdown
   }
 
   // MARK: - Row rendering
@@ -340,9 +350,7 @@ public struct HIGRenderer: Sendable {
     _ item: ContentItem,
     references: [String: HIGReferenceItem]
   ) -> String {
-    // HIG rows use "columns" in JSON, which maps to item.content in ContentItem.
-    // Each column has its own content array.
-    guard let columns = item.content, !columns.isEmpty else { return "" }
+    guard let columns = item.columns ?? item.content, !columns.isEmpty else { return "" }
 
     var markdown = ""
     for column in columns {
@@ -505,6 +513,9 @@ public struct HIGRenderer: Sendable {
 
     for item in items {
       if item.type == "module" || item.type == "symbol" {
+        if !markdown.isEmpty && !markdown.hasSuffix("\n\n") {
+          markdown += "\n"
+        }
         let hashes = String(repeating: "#", count: min(headingLevel, 6))
         markdown += "\(hashes) \(item.title)\n\n"
 

@@ -23,8 +23,7 @@ struct FetchCommand: CLICommand {
       printToStdErr("  fetch swift/array")
       printToStdErr("  fetch design/human-interface-guidelines/foundations/color")
       printToStdErr("  fetch videos/play/wwdc2021/10133")
-      printToStdErr(
-        "  fetch https://apple.github.io/swift-argument-parser/documentation/argumentparser")
+      printToStdErr("  fetch https://swiftlang.github.io/swift-markdown/documentation/markdown")
       Foundation.exit(1)
     }
 

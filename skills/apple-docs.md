@@ -63,7 +63,7 @@ npx -y -p @mehmetbaykar/swift-developer-docs-mcp \
 
 ```bash
 npx -y -p @mehmetbaykar/swift-developer-docs-mcp \
-  swift-developer-docs-mcp external https://apple.github.io/swift-argument-parser/documentation/argumentparser
+  swift-developer-docs-mcp external https://swiftlang.github.io/swift-markdown/documentation/markdown
 ```
 
 ### Auto-routing
@@ -74,7 +74,7 @@ npx -y -p @mehmetbaykar/swift-developer-docs-mcp \
 npx -y -p @mehmetbaykar/swift-developer-docs-mcp \
   swift-developer-docs-mcp fetch videos/play/wwdc2024/10133
 npx -y -p @mehmetbaykar/swift-developer-docs-mcp \
-  swift-developer-docs-mcp fetch https://apple.github.io/swift-argument-parser/documentation/argumentparser
+  swift-developer-docs-mcp fetch https://swiftlang.github.io/swift-markdown/documentation/markdown
 ```
 
 ## MCP Tools Quick Reference

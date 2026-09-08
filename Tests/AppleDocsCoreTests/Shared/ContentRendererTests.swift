@@ -970,4 +970,287 @@ struct ContentRendererTests {
       #expect(result == "")
     }
   }
+
+  @Suite("Link Title Resolution")
+  struct LinkTitleResolution {
+    private func paragraph(_ inline: [ContentItem]) -> [ContentItem] {
+      [ContentItem(type: "paragraph", inlineContent: inline)]
+    }
+
+    @Test("Inline links use the reference title instead of the identifier slug")
+    func inlineLinkUsesReferenceTitle() {
+      let id = "doc://com.apple.documentation/documentation/foundation-models"
+      let refs = [
+        id: ContentItem(
+          title: "Foundation Models framework utilities",
+          url: "https://github.com/apple/foundation-models-utilities", role: "article")
+      ]
+      let result = ContentRenderer.renderContentArray(
+        paragraph([ContentItem(type: "reference", identifier: id)]), references: refs)
+
+      #expect(
+        result.contains(
+          "[Foundation Models framework utilities](https://github.com/apple/foundation-models-utilities)"
+        ))
+      #expect(!result.contains("[foundation-models]"))
+    }
+
+    @Test("Inline links preserve code spans from titleInlineContent")
+    func inlineLinkPreservesCodeSpans() {
+      let id = "doc://com.apple.storekit/documentation/storekit/transaction/revocationtype-swift.property"
+      let refs = [
+        id: ContentItem(
+          title: "revocationType",
+          url: "https://developer.apple.com/documentation/storekit/transaction/revocationtype-swift.property",
+          role: "symbol",
+          titleInlineContent: [ContentItem(type: "codeVoice", code: .single("revocationType"))])
+      ]
+      let result = ContentRenderer.renderContentArray(
+        paragraph([ContentItem(type: "reference", identifier: id)]), references: refs)
+
+      #expect(
+        result.contains(
+          "[`revocationType`](https://developer.apple.com/documentation/storekit/transaction/revocationtype-swift.property)"
+        ))
+    }
+
+    @Test("Symbol titles are backticked when DocC omits titleInlineContent")
+    func symbolTitlesAreBackticked() {
+      let symbolID = "doc://com.apple.metal/documentation/Metal/MTLAccelerationStructure/gpuResourceID"
+      let moduleID = "doc://com.apple.storekit/documentation/StoreKit"
+      let refs = [
+        symbolID: ContentItem(
+          title: "gpuResourceID", url: "/documentation/Metal/MTLAccelerationStructure/gpuResourceID",
+          role: "symbol"),
+        moduleID: ContentItem(title: "StoreKit", url: "/documentation/StoreKit", role: "collection"),
+      ]
+      let result = ContentRenderer.renderContentArray(
+        paragraph([
+          ContentItem(type: "reference", identifier: symbolID),
+          ContentItem(text: " in ", type: "text"),
+          ContentItem(type: "reference", identifier: moduleID),
+        ]), references: refs)
+
+      #expect(
+        result.contains("[`gpuResourceID`](/documentation/Metal/MTLAccelerationStructure/gpuResourceID)"))
+      #expect(result.contains("[StoreKit](/documentation/StoreKit)"))
+      #expect(!result.contains("[`StoreKit`]"))
+    }
+
+    @Test("Explicit link titles win over the references map")
+    func explicitTitleWins() {
+      let id = "doc://x/documentation/Swift/Array"
+      let refs = [id: ContentItem(title: "Array", url: "/documentation/Swift/Array", role: "symbol")]
+      let result = ContentRenderer.renderInlineContent(
+        [ContentItem(type: "reference", title: "the array type", identifier: id)], references: refs)
+      #expect(result == "[the array type](/documentation/Swift/Array)")
+    }
+
+    @Test("Topic, relationship, and see-also links backtick symbol titles")
+    func sectionLinksBacktickSymbols() {
+      let id = "doc://com.apple.SwiftUI/documentation/SwiftUI/HStack"
+      let refs = [
+        id: ContentItem(
+          title: "HStack", url: "/documentation/SwiftUI/HStack",
+          abstract: [TextFragment(text: "A horizontal stack.", type: "text")], role: "symbol")
+      ]
+
+      let topics = ContentRenderer.renderTopicSections(
+        [TopicSection(title: "Stacks", identifiers: [id])], variants: nil, references: refs)
+      #expect(topics.contains("- [`HStack`](/documentation/SwiftUI/HStack) A horizontal stack."))
+
+      let seeAlso = ContentRenderer.renderSeeAlso(
+        [SeeAlsoSection(title: "Related", identifiers: [id])], variants: nil, references: refs)
+      #expect(seeAlso.contains("- [`HStack`](/documentation/SwiftUI/HStack)\n"))
+
+      let relationships = ContentRenderer.renderRelationships(
+        [ContentItem(type: "relationships", title: "Conforms To", identifiers: [id])],
+        variants: nil, refs: refs)
+      #expect(relationships.contains("- [`HStack`](/documentation/SwiftUI/HStack)\n"))
+    }
+
+    @Test("Untitled topic sections still render their links")
+    func untitledTopicSections() {
+      let refs = [
+        "doc://x/documentation/Swift/DataRaceSafety": ContentItem(
+          title: "Data Race Safety", url: "/documentation/Swift/DataRaceSafety", role: "article"),
+        "doc://x/documentation/Swift/MigrationStrategy": ContentItem(
+          title: "Migration Strategy", url: "/documentation/Swift/MigrationStrategy", role: "article"),
+        "doc://x/documentation/Swift/RuntimeBehavior": ContentItem(
+          title: "Runtime Behavior", url: "/documentation/Swift/RuntimeBehavior", role: "article"),
+      ]
+      let topics = [
+        TopicSection(
+          title: "",
+          identifiers: [
+            "doc://x/documentation/Swift/DataRaceSafety",
+            "doc://x/documentation/Swift/MigrationStrategy",
+          ]),
+        TopicSection(
+          title: "Swift Concurrency in Depth",
+          identifiers: ["doc://x/documentation/Swift/RuntimeBehavior"]),
+      ]
+
+      let result = ContentRenderer.renderTopicSections(topics, variants: nil, references: refs)
+
+      #expect(result.contains("[Data Race Safety]"))
+      #expect(result.contains("[Migration Strategy]"))
+      #expect(result.contains("## Swift Concurrency in Depth"))
+      #expect(result.contains("[Runtime Behavior]"))
+      #expect(!result.contains("## \n"))
+    }
+
+    @Test("Topic links flag deprecated symbols")
+    func topicLinksFlagDeprecated() {
+      let id = "doc://x/documentation/UIKit/UIWebView"
+      let refs = [
+        id: ContentItem(
+          title: "UIWebView", url: "/documentation/UIKit/UIWebView", role: "symbol", deprecated: true)
+      ]
+      let result = ContentRenderer.renderTopicSections(
+        [TopicSection(title: "Views", identifiers: [id])], variants: nil, references: refs)
+      #expect(result.contains("- [`UIWebView`](/documentation/UIKit/UIWebView) *(Deprecated)*"))
+    }
+
+    @Test("Decodes titleInlineContent and untitled topic sections from DocC JSON")
+    func decodesTitleInlineContentAndUntitledTopics() throws {
+      let json = """
+        {
+          "topicSections": [
+            { "identifiers": ["doc://x/documentation/Swift/Array"] },
+            { "title": "Named", "identifiers": [] }
+          ],
+          "references": {
+            "doc://x/documentation/Swift/Array": {
+              "title": "Array",
+              "titleInlineContent": [{ "type": "codeVoice", "code": "Array" }],
+              "role": "symbol",
+              "url": "/documentation/Swift/Array"
+            }
+          }
+        }
+        """
+      let doc = try JSONDecoder().decode(AppleDocJSON.self, from: Data(json.utf8))
+      let topics = try #require(doc.topicSections)
+      #expect(topics.count == 2)
+      #expect(topics[0].title == "")
+      #expect(topics[1].title == "Named")
+
+      let reference = try #require(doc.references?["doc://x/documentation/Swift/Array"])
+      #expect(reference.titleInlineContent?.count == 1)
+    }
+  }
+
+  @Suite("Markdown Formatting")
+  struct MarkdownFormatting {
+    private func text(_ string: String) -> ContentItem {
+      ContentItem(type: "paragraph", inlineContent: [ContentItem(text: string, type: "text")])
+    }
+
+    private func code(_ string: String) -> ContentItem {
+      ContentItem(type: "paragraph", inlineContent: [ContentItem(type: "codeVoice", code: .single(string))])
+    }
+
+    @Test("Indents nested lists under their parent item")
+    func nestedListIndentation() {
+      let items = [
+        ContentItem(
+          type: "unorderedList",
+          items: [
+            ContentItem(content: [
+              text(
+                "This release removes support for the following deprecated `NSPersistentStore` option keys:"
+              ),
+              ContentItem(
+                type: "unorderedList",
+                items: [
+                  ContentItem(content: [code("NSPersistentStoreUbiquitousContentNameKey")]),
+                  ContentItem(content: [code("NSPersistentStoreUbiquitousContentURLKey")]),
+                ]),
+            ])
+          ])
+      ]
+      let result = ContentRenderer.renderContentArray(items, references: nil)
+
+      #expect(
+        result == """
+          - This release removes support for the following deprecated `NSPersistentStore` option keys:
+            - `NSPersistentStoreUbiquitousContentNameKey`
+            - `NSPersistentStoreUbiquitousContentURLKey`
+
+
+          """)
+    }
+
+    @Test("Keeps paragraph breaks inside list items and indents continuation lines")
+    func multiParagraphListItems() {
+      let unordered = ContentRenderer.renderContentArray(
+        [
+          ContentItem(
+            type: "unorderedList",
+            items: [ContentItem(content: [text("First paragraph."), text("Second paragraph.")])])
+        ], references: nil)
+      #expect(unordered.hasPrefix("- First paragraph.\n\n  Second paragraph.\n"))
+
+      let ordered = ContentRenderer.renderContentArray(
+        [
+          ContentItem(
+            type: "orderedList",
+            items: [
+              ContentItem(content: [
+                text("First paragraph."),
+                text("Second paragraph."),
+                ContentItem(
+                  type: "unorderedList", items: [ContentItem(content: [text("Nested item")])]),
+              ])
+            ])
+        ], references: nil)
+      #expect(ordered.hasPrefix("1. First paragraph.\n\n   Second paragraph.\n   - Nested item\n"))
+    }
+
+    @Test("Renders empty list items as a bare marker")
+    func emptyListItem() {
+      let result = ContentRenderer.renderContentArray(
+        [ContentItem(type: "unorderedList", items: [ContentItem(content: [])])], references: nil)
+      #expect(result == "-\n\n")
+    }
+
+    @Test("Deeply nested blocks do not exhaust the inline depth budget")
+    func deepBlocksKeepInlineBudget() {
+      var content: [ContentItem] = [text("Level 30 text")]
+      for level in stride(from: 29, through: 0, by: -1) {
+        content = [
+          text("Level \(level) text"),
+          ContentItem(type: "unorderedList", items: [ContentItem(content: content)]),
+        ]
+      }
+      let result = ContentRenderer.renderContentArray(content, references: nil)
+
+      #expect(result.contains("Level 0 text"))
+      #expect(result.contains("Level 30 text"))
+      #expect(!result.contains("[Inline content too deeply nested]"))
+    }
+
+    @Test("Callouts quote blank lines without trailing whitespace")
+    func calloutBlankLines() {
+      let result = ContentRenderer.formatCallout(
+        "WARNING", content: "Use the new API.", lead: "**Deprecated**")
+      #expect(result == "> [!WARNING]\n> **Deprecated**\n>\n> Use the new API.\n\n")
+    }
+
+    @Test("Empty asides render nothing")
+    func emptyAside() {
+      let result = ContentRenderer.renderContentArray(
+        [ContentItem(type: "aside", content: [], style: "note")], references: nil)
+      #expect(result == "")
+    }
+
+    @Test("Deprecated asides lead with a Deprecated label")
+    func deprecatedAsideLead() {
+      let result = ContentRenderer.renderContentArray(
+        [ContentItem(type: "aside", content: [text("Use the new API.")], style: "deprecated")],
+        references: nil)
+      #expect(result == "> [!WARNING]\n> **Deprecated**\n>\n> Use the new API.\n\n")
+    }
+  }
 }

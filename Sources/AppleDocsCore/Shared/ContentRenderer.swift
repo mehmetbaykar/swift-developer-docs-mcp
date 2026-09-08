@@ -28,14 +28,16 @@ public struct ContentRenderer: Sendable {
         }
         return ""
       case "reference":
+        let reference = item.identifier.flatMap { references?[$0] }
         let title =
-          item.title ?? item.text
-          ?? (item.identifier.map { extractTitleFromIdentifier($0) } ?? "")
+          nonEmpty(item.title) ?? nonEmpty(item.text)
+          ?? resolveReferenceTitle(
+            reference, references: references, depth: depth, externalOrigin: externalOrigin)
+          ?? item.identifier.map { extractTitleFromIdentifier($0) } ?? ""
         let url =
-          item.identifier != nil
-          ? convertIdentifierToURL(
-            item.identifier!, references: references, externalOrigin: externalOrigin)
-          : ""
+          item.identifier.map {
+            convertIdentifierToURL($0, references: references, externalOrigin: externalOrigin)
+          } ?? ""
         return "[\(title)](\(url))"
       case "emphasis":
         let inner =
@@ -91,6 +93,49 @@ public struct ContentRenderer: Sendable {
         return item.text ?? ""
       }
     }.joined()
+  }
+
+  static func resolveReferenceTitle(
+    _ reference: ContentItem?, references: [String: ContentItem]?, depth: Int = 0,
+    externalOrigin: String? = nil
+  ) -> String? {
+    guard let reference else { return nil }
+    if let titleInlineContent = reference.titleInlineContent, !titleInlineContent.isEmpty {
+      let rendered = renderInlineContent(
+        titleInlineContent, references: references, depth: depth + 1,
+        externalOrigin: externalOrigin)
+      if let rendered = nonEmpty(rendered) { return rendered }
+    }
+    guard let title = nonEmpty(reference.title) else { return nil }
+    return reference.role == "symbol" ? "`\(title)`" : title
+  }
+
+  public struct ResolvedLink: Sendable {
+    public let title: String
+    public let url: String
+    public let abstract: String
+    public let deprecated: Bool
+  }
+
+  public static func resolveLink(
+    _ id: String, variants: [Variant]?, references: [String: ContentItem]?,
+    externalOrigin: String? = nil
+  ) -> ResolvedLink {
+    let info = variants?.first { $0.identifier == id }
+    let reference = references?[id]
+    let title =
+      nonEmpty(info?.title)
+      ?? resolveReferenceTitle(reference, references: references, externalOrigin: externalOrigin)
+      ?? extractTitleFromIdentifier(id)
+    let url = convertIdentifierToURL(id, references: references, externalOrigin: externalOrigin)
+    let abstract = (info?.abstract ?? reference?.abstract)?.compactMap { $0.text }.joined() ?? ""
+    return ResolvedLink(
+      title: title, url: url, abstract: abstract, deprecated: reference?.deprecated == true)
+  }
+
+  private static func nonEmpty(_ value: String?) -> String? {
+    guard let value, !value.isEmpty else { return nil }
+    return value
   }
 
   // MARK: - Content Array Rendering
@@ -185,7 +230,7 @@ public struct ContentRenderer: Sendable {
   ) -> String {
     guard let inlineContent = item.inlineContent else { return "" }
     let text = renderInlineContent(
-      inlineContent, references: references, depth: depth, externalOrigin: externalOrigin)
+      inlineContent, references: references, externalOrigin: externalOrigin)
     return "\(text)\n\n"
   }
 
@@ -213,34 +258,60 @@ public struct ContentRenderer: Sendable {
   ) -> String {
     guard let items = item.items else { return "" }
 
-    var markdown = ""
-    for (index, listItem) in items.enumerated() {
-      let itemText = renderContentArray(
+    let itemContents = items.map { listItem in
+      renderContentArray(
         listItem.content ?? [],
         references: references,
         depth: depth + 1,
         externalOrigin: externalOrigin
       )
-      let normalized = itemText.replacingOccurrences(
-        of: "\\n\\n$",
-        with: "",
-        options: .regularExpression
-      )
-      if ordered {
-        markdown += "\(index + 1). \(normalized)\n"
-      } else {
-        markdown += "- \(normalized)\n"
-      }
+    }
+    return formatList(itemContents, ordered: ordered)
+  }
+
+  public static func formatList(_ itemContents: [String], ordered: Bool) -> String {
+    guard !itemContents.isEmpty else { return "" }
+    let items = itemContents.enumerated().map { index, content in
+      formatListItem(marker: ordered ? "\(index + 1). " : "- ", content: content)
+    }
+    return "\(items.joined())\n"
+  }
+
+  private static func formatListItem(marker: String, content: String) -> String {
+    let trimmed = content.replacingOccurrences(
+      of: #"\n+$"#, with: "", options: .regularExpression)
+    guard !trimmed.isEmpty else {
+      return "\(marker.replacingOccurrences(of: #"\s+$"#, with: "", options: .regularExpression))\n"
     }
 
-    return markdown.isEmpty ? "" : "\(markdown)\n"
+    let tightened = trimmed.replacingOccurrences(
+      of: #"\n{2,}(?=(?:[-*]|\d+\.) )"#, with: "\n", options: .regularExpression)
+    let indent = String(repeating: " ", count: marker.count)
+    let lines = tightened.components(separatedBy: "\n")
+    let continuation = lines.dropFirst().map { $0.isEmpty ? "" : indent + $0 }
+    return "\(marker)\(([lines[0]] + continuation).joined(separator: "\n"))\n"
+  }
+
+  public static func formatCallout(_ type: String, content: String, lead: String? = nil)
+    -> String
+  {
+    let paragraphs = [lead, content.trimmingCharacters(in: .whitespacesAndNewlines)]
+      .compactMap { $0 }
+      .filter { !$0.isEmpty }
+    guard !paragraphs.isEmpty else { return "" }
+
+    let quoted = paragraphs.joined(separator: "\n\n")
+      .components(separatedBy: "\n")
+      .map { $0.isEmpty ? ">" : "> \($0)" }
+      .joined(separator: "\n")
+    return "> [!\(type)]\n\(quoted)\n\n"
   }
 
   private static func renderRow(
     _ item: ContentItem, references: [String: ContentItem]?, depth: Int,
     externalOrigin: String?
   ) -> String {
-    guard let columns = item.content else { return "" }
+    guard let columns = item.columns ?? item.content else { return "" }
 
     var markdown = ""
     for column in columns {
@@ -431,17 +502,16 @@ public struct ContentRenderer: Sendable {
     externalOrigin: String? = nil
   ) -> String {
     let style = item.style ?? "note"
-    let calloutType = mapAsideStyleToCallout(style)
     let asideContent =
-      item.content != nil
-      ? renderContentArray(
-        item.content!, references: references, depth: depth + 1, externalOrigin: externalOrigin)
-      : ""
-    let cleanContent = asideContent.trimmingCharacters(in: .whitespacesAndNewlines)
-      .replacingOccurrences(of: "\n", with: "\n> ")
-    let deprecatedLabel = style.lowercased() == "deprecated" ? "**Deprecated**\n>\n> " : ""
-    return "> [!\(calloutType)]\n> \(deprecatedLabel)\(cleanContent)\n\n"
+      item.content.map {
+        renderContentArray(
+          $0, references: references, depth: depth + 1, externalOrigin: externalOrigin)
+      } ?? ""
+    let lead = style.lowercased() == "deprecated" ? deprecatedLead : nil
+    return formatCallout(mapAsideStyleToCallout(style), content: asideContent, lead: lead)
   }
+
+  public static let deprecatedLead = "**Deprecated**"
 
   // MARK: - Image Rendering
 
@@ -531,11 +601,55 @@ public struct ContentRenderer: Sendable {
       guard let title = rel.title, let identifiers = rel.identifiers else { continue }
       markdown += "## \(title)\n\n"
       for id in identifiers {
-        let info = variants?.first { $0.identifier == id }
-        let reference = refs?[id]
-        let displayTitle = info?.title ?? reference?.title ?? extractTitleFromIdentifier(id)
-        let url = convertIdentifierToURL(id, references: refs, externalOrigin: externalOrigin)
-        markdown += "- [\(displayTitle)](\(url))\n"
+        let link = resolveLink(
+          id, variants: variants, references: refs, externalOrigin: externalOrigin)
+        markdown += "- [\(link.title)](\(link.url))\n"
+      }
+      markdown += "\n"
+    }
+    return markdown
+  }
+
+  public static func renderTopicSections(
+    _ topics: [TopicSection], variants: [Variant]?, references: [String: ContentItem]?,
+    externalOrigin: String? = nil
+  ) -> String {
+    var markdown = ""
+    for topic in topics {
+      if !topic.title.isEmpty {
+        markdown += "## \(topic.title)\n\n"
+      }
+
+      guard let identifiers = topic.identifiers else { continue }
+      for id in identifiers {
+        let link = resolveLink(
+          id, variants: variants, references: references, externalOrigin: externalOrigin)
+        markdown += "- [\(link.title)](\(link.url))"
+        if link.deprecated {
+          markdown += " *(Deprecated)*"
+        }
+        if !link.abstract.isEmpty {
+          markdown += " \(link.abstract)"
+        }
+        markdown += "\n"
+      }
+      markdown += "\n"
+    }
+    return markdown
+  }
+
+  public static func renderSeeAlso(
+    _ sections: [SeeAlsoSection], variants: [Variant]?, references: [String: ContentItem]?,
+    externalOrigin: String? = nil
+  ) -> String {
+    var markdown = ""
+    for section in sections {
+      guard let identifiers = section.identifiers, !section.title.isEmpty else { continue }
+      markdown += "## \(section.title)\n\n"
+      for id in identifiers {
+        let link = resolveLink(
+          id, variants: variants, references: references, externalOrigin: externalOrigin)
+        markdown += "- [\(link.title)](\(link.url))\n"
       }
       markdown += "\n"
     }

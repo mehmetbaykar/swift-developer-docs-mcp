@@ -194,8 +194,8 @@ public struct ReferenceRenderer: Sendable {
     -> String
   {
     guard let body = deprecationNoticeBody(data, references: references) else { return "" }
-    let quotedBody = body.replacingOccurrences(of: "\n", with: "\n> ")
-    return "> [!WARNING]\n> **Deprecated**\n>\n> \(quotedBody)\n\n"
+    return ContentRenderer.formatCallout(
+      "WARNING", content: body, lead: ContentRenderer.deprecatedLead)
   }
 
   static func isSymbolDeprecated(_ data: AppleDocJSON) -> Bool {
@@ -308,39 +308,7 @@ public struct ReferenceRenderer: Sendable {
   static func renderTopicSections(
     _ topics: [TopicSection], variants: [Variant]?, refs: [String: ContentItem]?
   ) -> String {
-    var markdown = ""
-    for topic in topics {
-      guard !topic.title.isEmpty else { continue }
-      markdown += "## \(topic.title)\n\n"
-      if let identifiers = topic.identifiers {
-        for id in identifiers {
-          let info = variants?.first { $0.identifier == id }
-          let reference = refs?[id]
-          if info != nil || reference != nil {
-            let displayTitle =
-              info?.title ?? reference?.title ?? ContentRenderer.extractTitleFromIdentifier(id)
-            let url = ContentRenderer.convertIdentifierToURL(id, references: refs)
-            var abstractText = ""
-            if let infoAbstract = info?.abstract {
-              abstractText = infoAbstract.compactMap { $0.text }.joined()
-            } else if let refAbstract = reference?.abstract {
-              abstractText = refAbstract.compactMap { $0.text }.joined()
-            }
-            markdown += "- [\(displayTitle)](\(url))"
-            if !abstractText.isEmpty {
-              markdown += " \(abstractText)"
-            }
-            markdown += "\n"
-          } else {
-            let displayTitle = ContentRenderer.extractTitleFromIdentifier(id)
-            let url = ContentRenderer.convertIdentifierToURL(id, references: refs)
-            markdown += "- [\(displayTitle)](\(url))\n"
-          }
-        }
-        markdown += "\n"
-      }
-    }
-    return markdown
+    ContentRenderer.renderTopicSections(topics, variants: variants, references: refs)
   }
 
   static func renderIndexContent(_ children: [IndexContentItem]) -> String {
@@ -371,20 +339,6 @@ public struct ReferenceRenderer: Sendable {
   static func renderSeeAlso(
     _ sections: [SeeAlsoSection], variants: [Variant]?, refs: [String: ContentItem]?
   ) -> String {
-    var markdown = ""
-    for section in sections {
-      guard let identifiers = section.identifiers, !section.title.isEmpty else { continue }
-      markdown += "## \(section.title)\n\n"
-      for id in identifiers {
-        let info = variants?.first { $0.identifier == id }
-        let reference = refs?[id]
-        let displayTitle =
-          info?.title ?? reference?.title ?? ContentRenderer.extractTitleFromIdentifier(id)
-        let url = ContentRenderer.convertIdentifierToURL(id, references: refs)
-        markdown += "- [\(displayTitle)](\(url))\n"
-      }
-      markdown += "\n"
-    }
-    return markdown
+    ContentRenderer.renderSeeAlso(sections, variants: variants, references: refs)
   }
 }

@@ -71,7 +71,7 @@ npx @mehmetbaykar/swift-developer-docs-mcp hig foundations/color
 npx @mehmetbaykar/swift-developer-docs-mcp video videos/play/wwdc2024/10133
 
 # Fetch external Swift-DocC documentation
-npx @mehmetbaykar/swift-developer-docs-mcp external https://apple.github.io/swift-argument-parser/documentation/argumentparser
+npx @mehmetbaykar/swift-developer-docs-mcp external https://swiftlang.github.io/swift-markdown/documentation/markdown
 
 # Start the HTTP server
 npx @mehmetbaykar/swift-developer-docs-mcp serve --port 8080
@@ -198,6 +198,10 @@ npx @mehmetbaykar/swift-developer-docs-mcp serve --port 8080
 | `GET /design/human-interface-guidelines/{path}` | HIG pages |
 | `GET /videos/play/{collection}/{id}` | Video transcripts |
 | `GET /external/{full-https-url}` | External DocC documentation |
+| `GET /SKILL.md` | Agent skill describing the HTTP service |
+| `GET /.well-known/agent-card.json` | A2A agent card |
+| `GET /.well-known/api-catalog` | RFC 9727 API catalog |
+| `GET /.well-known/agent-skills/index.json` | agentskills.io discovery index |
 
 Documentation endpoints return `text/markdown` by default. Set `Accept: application/json` for JSON. Responses include `ETag`, `Cache-Control`, and `Content-Location` headers. `GET /` returns HTML unless `Accept: text/markdown` is sent. Run the binary without a subcommand to start the MCP server over stdio.
 

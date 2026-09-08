@@ -305,6 +305,137 @@ struct HIGRendererTests {
     #expect(!result.contains("Fallback Alt"))
   }
 
+  @Test("Renders row columns from the columns key used by Apple's HIG JSON")
+  func renderRowColumnsKey() throws {
+    let json = """
+      {
+        "type": "row",
+        "numberOfColumns": 2,
+        "columns": [
+          { "size": 1, "content": [{ "type": "paragraph", "inlineContent": [{ "type": "text", "text": "Left" }] }] },
+          { "size": 1, "content": [{ "type": "paragraph", "inlineContent": [{ "type": "text", "text": "Right" }] }] }
+        ]
+      }
+      """
+    let item = try JSONDecoder().decode(ContentItem.self, from: Data(json.utf8))
+
+    let result = HIGRenderer.renderHIGRow(item, references: [:])
+    #expect(result.contains("Left"))
+    #expect(result.contains("Right"))
+  }
+
+  private func paragraph(_ text: String) -> ContentItem {
+    ContentItem(type: "paragraph", inlineContent: [ContentItem(text: text, type: "text")])
+  }
+
+  private func heading(_ text: String) -> ContentItem {
+    ContentItem(text: text, type: "heading", level: 4)
+  }
+
+  private func tabTable(style: String, size: String) -> ContentItem {
+    ContentItem(
+      type: "table",
+      header: "row",
+      rows: [
+        [[paragraph("Style")], [paragraph("Size (points)")]],
+        [[paragraph(style)], [paragraph(size)]],
+      ])
+  }
+
+  @Test("Renders every tab of a HIG tab navigator")
+  func renderEveryTab() {
+    let item = ContentItem(
+      type: "tabNavigator",
+      tabs: [
+        TabNavigatorTab(
+          title: "xSmall", content: [heading("xSmall"), tabTable(style: "Large Title", size: "31")]),
+        TabNavigatorTab(
+          title: "Large (default)",
+          content: [heading("Large (default)"), tabTable(style: "Large Title", size: "34")]),
+      ])
+
+    let result = HIGRenderer.renderHIGContent(sections: [item], references: [:])
+
+    #expect(result.contains("#### xSmall"))
+    #expect(result.contains("| Large Title | 31 |"))
+    #expect(result.contains("#### Large (default)"))
+    #expect(result.contains("| Large Title | 34 |"))
+    #expect(!result.contains("**xSmall**"))
+  }
+
+  @Test("Labels HIG tabs that don't lead with a heading")
+  func labelsTabsWithoutHeading() {
+    let item = ContentItem(
+      type: "tabNavigator",
+      tabs: [
+        TabNavigatorTab(title: "SF Pro", content: [paragraph("Neutral")]),
+        TabNavigatorTab(title: "New York", content: [paragraph("Serif")]),
+      ])
+
+    let result = HIGRenderer.renderHIGContent(sections: [item], references: [:])
+
+    #expect(result.contains("**SF Pro**\n\nNeutral"))
+    #expect(result.contains("**New York**\n\nSerif"))
+  }
+
+  @Test("Keeps the HIG tab label when the tab leads with an unrelated heading")
+  func keepsLabelForUnrelatedHeading() {
+    let item = ContentItem(
+      type: "tabNavigator",
+      tabs: [
+        TabNavigatorTab(
+          title: "Small", content: [heading("Small (default 38mm)"), paragraph("Compact")]),
+        TabNavigatorTab(title: "Large", content: [heading("Overview"), paragraph("Roomy")]),
+      ])
+
+    let result = HIGRenderer.renderHIGContent(sections: [item], references: [:])
+
+    #expect(!result.contains("**Small**"))
+    #expect(result.contains("#### Small (default 38mm)\n\nCompact"))
+    #expect(result.contains("**Large**\n\n#### Overview\n\nRoomy"))
+  }
+
+  @Test("Indents nested HIG lists and drops empty asides")
+  func nestedListsAndEmptyAsides() {
+    let list = ContentItem(
+      type: "unorderedList",
+      items: [
+        ContentItem(content: [
+          paragraph("Parent"),
+          ContentItem(type: "unorderedList", items: [ContentItem(content: [paragraph("Child")])]),
+        ])
+      ])
+    let emptyAside = ContentItem(type: "aside", content: [], style: "note")
+
+    let result = HIGRenderer.renderHIGContent(sections: [list, emptyAside], references: [:])
+
+    #expect(result == "- Parent\n  - Child\n\n")
+  }
+
+  @Test("Separates ToC article lists from the next heading with a blank line")
+  func tocHeadingSpacing() {
+    let items = [
+      HIGTocItem(
+        children: [
+          HIGTocItem(
+            children: nil, icon: nil, path: "/design/human-interface-guidelines/accessibility",
+            title: "Accessibility", type: "article")
+        ], icon: nil, path: "/design/human-interface-guidelines/foundations", title: "Foundations",
+        type: "module"),
+      HIGTocItem(
+        children: [
+          HIGTocItem(
+            children: nil, icon: nil, path: "/design/human-interface-guidelines/layout",
+            title: "Layout", type: "article")
+        ], icon: nil, path: "/design/human-interface-guidelines/patterns", title: "Patterns",
+        type: "module"),
+    ]
+
+    let result = HIGRenderer.renderHIGTocItems(items, headingLevel: 3)
+
+    #expect(result.contains("- [Accessibility](/design/human-interface-guidelines/accessibility)\n\n### Patterns"))
+  }
+
   @Test("Video falls back to alt when no abstract")
   func renderVideoFallbackToAlt() {
     let refs: [String: HIGReferenceItem] = [
