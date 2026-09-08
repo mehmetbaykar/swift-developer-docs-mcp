@@ -971,7 +971,7 @@ struct ContentRendererTests {
     }
   }
 
-  // MARK: - Link titles (upstream sosumi.ai parity)
+  // MARK: - Link Title Resolution
 
   @Suite("Link Title Resolution")
   struct LinkTitleResolution {
@@ -1143,7 +1143,7 @@ struct ContentRendererTests {
     }
   }
 
-  // MARK: - Markdown formatting (upstream sosumi.ai parity)
+  // MARK: - Markdown Formatting
 
   @Suite("Markdown Formatting")
   struct MarkdownFormatting {

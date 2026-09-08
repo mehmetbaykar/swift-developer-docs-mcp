@@ -38,21 +38,15 @@ public struct SearchResponse: Codable, Sendable {
 
 public struct AppleDocsSearcher: Sendable {
 
-  // Apple's current search backend, discovered from
-  // https://developer.apple.com/search/scripts/search.js (September 2026).
-  // Earlier backends (/search/services/search.php, /api/v1/search) now return 404.
-  // This one answers only in JSONL: one event per line, each tagged with a `kind`.
+  // Backend used by https://developer.apple.com/search/scripts/search.js; the older
+  // developer.apple.com search endpoints return 404.
   public static let searchServiceURL = "https://devintserv.msc.sbz.apple.com/api/v1/query"
 
-  // The backend rejects requests that do not name the response channels they want.
-  // `quickSearch` carries the top typeahead matches in a single event and `search`
-  // streams the full ranked list. Apple's own page also asks for `ask` (a generated
-  // answer), which is not something this tool reports.
+  // Required by the backend; `ask` (a generated answer) is deliberately excluded.
   static let includedResponses = ["quickSearch", "search"]
 
   static let defaultTargetResultLocale = "en"
 
-  // Apple's backend uses BCP-47 tags ("en", "ja-JP") rather than POSIX locales ("en_US").
   // Mirrors https://developer.apple.com/search/scripts/helpers.js
   private static let targetResultLocales: [String: String] = [
     "en": "en",
@@ -77,7 +71,7 @@ public struct AppleDocsSearcher: Sendable {
     request.setValue(Fetcher.randomUserAgent(), forHTTPHeaderField: "User-Agent")
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.setValue("application/jsonl", forHTTPHeaderField: "Accept")
-    // The MSC backend requires a browser-style Origin/Referer pair to accept the request.
+    // The backend rejects requests without a browser-style Origin/Referer pair.
     request.setValue("https://developer.apple.com", forHTTPHeaderField: "Origin")
     request.setValue("https://developer.apple.com/search/", forHTTPHeaderField: "Referer")
     request.httpBody = try makeRequestBody(query: query)
@@ -113,7 +107,6 @@ public struct AppleDocsSearcher: Sendable {
   static func resolveTargetResultLocale(_ identifier: String = Locale.current.identifier)
     -> String
   {
-    // Normalize POSIX-style identifiers ("en_US@calendar=gregorian", "en_US.UTF-8").
     var normalized = identifier
     if let at = normalized.firstIndex(of: "@") { normalized = String(normalized[..<at]) }
     if let dot = normalized.firstIndex(of: ".") { normalized = String(normalized[..<dot]) }
@@ -126,8 +119,6 @@ public struct AppleDocsSearcher: Sendable {
       return defaultTargetResultLocale
     }
 
-    // The region is the first subtag after the language that looks like a region
-    // (two letters or three digits); script tags like "Hans" are skipped.
     let region = subtags.dropFirst().first { subtag in
       (subtag.count == 2 && subtag.allSatisfy(\.isLetter))
         || (subtag.count == 3 && subtag.allSatisfy(\.isNumber))
@@ -139,11 +130,8 @@ public struct AppleDocsSearcher: Sendable {
       ?? defaultTargetResultLocale
   }
 
-  // The response body is JSONL: one JSON object per line. A `quickSearch` event
-  // carries its results inline, while `search` events stream the full list as
-  // diffs against a JSON text buffer, so those results can only be read once
-  // every line has been applied. Any other kind (`quickSearchFinished`,
-  // `searchFinished`, `ask`) is not part of the result set and is skipped.
+  // `quickSearch` events carry results inline; `search` events stream the result list
+  // as diffs against a JSON text buffer that is only parseable once complete.
   static func parseSearchEvents(_ payload: String) throws -> [SearchResult] {
     var items: [Any] = []
     var streamedSearch = ""
@@ -171,16 +159,13 @@ public struct AppleDocsSearcher: Sendable {
     return extractSearchResults(items)
   }
 
-  // Each `search` event appends to the buffer after dropping `removeLast`
-  // characters from the end of what came before.
   private static func applySearchDiff(_ buffer: String, diff: Any?) -> String {
     guard let diff = diff as? [String: Any] else { return buffer }
 
     let removeLast = (diff["removeLast"] as? NSNumber)?.intValue ?? 0
     let append = diff["append"] as? String ?? ""
 
-    // `removeLast` is measured the way Apple's JavaScript client measures strings:
-    // in UTF-16 code units, not in Swift Characters.
+    // `removeLast` counts UTF-16 code units (JavaScript string semantics), not Characters.
     let utf16 = Array(buffer.utf16)
     let keptCount = max(0, utf16.count - max(0, removeLast))
     let kept = String(decoding: utf16[..<keptCount], as: UTF16.self)
@@ -203,8 +188,6 @@ public struct AppleDocsSearcher: Sendable {
     return container["results"] as? [Any] ?? []
   }
 
-  // The same page can be reported by more than one channel, so keep the first
-  // mention of each URL and drop the rest.
   private static func extractSearchResults(_ items: [Any]) -> [SearchResult] {
     var seen = Set<String>()
     var results: [SearchResult] = []
@@ -218,11 +201,6 @@ public struct AppleDocsSearcher: Sendable {
     return results
   }
 
-  // A result is `{ metadata, origin }`, and `metadata.metadataKind` says how to read it:
-  //   - "documentation" for reference pages, with singular fields
-  //   - "developer" for WWDC sessions and other media, with parallel arrays
-  //   - "webPage" for marketing and swift.org pages, keyed by `sourceURL`
-  // Streamed `search` results wrap the payload in `value` next to a match excerpt.
   static func normalizeSearchResult(_ item: Any) -> SearchResult? {
     guard let record = item as? [String: Any] else { return nil }
     let unwrapped = record["value"] as? [String: Any] ?? record

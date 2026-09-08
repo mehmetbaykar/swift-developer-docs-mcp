@@ -324,7 +324,7 @@ struct HIGRendererTests {
     #expect(result.contains("Right"))
   }
 
-  // MARK: - Tab navigator rendering (upstream sosumi.ai parity)
+  // MARK: - Tab navigator rendering
 
   private func paragraph(_ text: String) -> ContentItem {
     ContentItem(type: "paragraph", inlineContent: [ContentItem(text: text, type: "text")])
@@ -362,7 +362,6 @@ struct HIGRendererTests {
     #expect(result.contains("| Large Title | 31 |"))
     #expect(result.contains("#### Large (default)"))
     #expect(result.contains("| Large Title | 34 |"))
-    // The tabs already lead with their own headings, so no label is repeated.
     #expect(!result.contains("**xSmall**"))
   }
 
@@ -393,10 +392,8 @@ struct HIGRendererTests {
 
     let result = HIGRenderer.renderHIGContent(sections: [item], references: [:])
 
-    // A heading that repeats the title stands in for the label.
     #expect(!result.contains("**Small**"))
     #expect(result.contains("#### Small (default 38mm)\n\nCompact"))
-    // An unrelated heading does not, so the title is kept.
     #expect(result.contains("**Large**\n\n#### Overview\n\nRoomy"))
   }
 

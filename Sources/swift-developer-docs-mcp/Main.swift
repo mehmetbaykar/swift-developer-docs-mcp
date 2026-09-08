@@ -19,13 +19,9 @@ struct AppleDocsServer {
     } catch let error as ServiceGroupError
       where error.errorCode == .serviceFinishedUnexpectedly
     {
-      // The stdio transport finishes when the MCP client closes stdin, which FastMCP's
-      // service group reports as an unexpected finish. That is the normal shutdown path
-      // for a stdio server, so exit quietly.
+      // FastMCP reports the client closing stdin this way; it is the normal stdio shutdown.
       return
     } catch {
-      // An error escaping `main` is a Swift fatal error (SIGILL plus a backtrace), so report
-      // it like any other CLI failure instead.
       printToStdErr("swift-developer-docs-mcp: \(error.localizedDescription)")
       Foundation.exit(1)
     }

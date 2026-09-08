@@ -52,7 +52,6 @@ public struct ContentItem: Codable, Sendable {
   public let text: String?
   public let type: String?
   public let title: String?
-  /// Rich title DocC emits for symbol references; preserves code spans in link text.
   public let titleInlineContent: [ContentItem]?
   public let name: String?
   public let tokens: [Token]?
@@ -61,7 +60,6 @@ public struct ContentItem: Codable, Sendable {
   public let items: [ContentItem]?
   public let itemIdentifiers: [String]?
   public let tabs: [TabNavigatorTab]?
-  /// Column blocks of a `row` item; each column carries its own `content` array.
   public let columns: [ContentItem]?
   public let code: CodeValue?
   public let syntax: String?
@@ -318,7 +316,6 @@ public struct Parameter: Codable, Sendable {
 }
 
 public struct TopicSection: Codable, Sendable {
-  /// Empty when DocC emits an untitled topic group.
   public let title: String
   public let identifiers: [String]?
   public let children: [TopicSection]?

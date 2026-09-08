@@ -3,19 +3,11 @@ import Foundation
 import HTTPTypes
 import Hummingbird
 
-/// Agent-facing discovery documents served from `/.well-known/*` and `/SKILL.md`,
-/// mirroring the discovery surface published by sosumi.ai.
 enum AgentDiscovery {
   static let skillName = "apple-docs"
   static let providerOrganization = "mehmetbaykar"
   static let repositoryURL = "https://github.com/mehmetbaykar/swift-developer-docs-mcp"
-
-  /// The A2A protocol version the agent card advertises, as `major.minor`.
-  /// See https://a2a-protocol.org/latest/specification/
   static let a2aProtocolVersion = "0.3"
-
-  /// The documentation service is exposed over plain HTTP requests, so `HTTP+JSON`
-  /// is the closest of A2A's officially supported bindings.
   static let a2aTransport = "HTTP+JSON"
 
   static let agentDescription =
@@ -30,7 +22,6 @@ enum AgentDiscovery {
     let tags: [String]
     let examples: [String]
 
-    /// The camelCase tool name as a kebab-case skill id.
     var id: String {
       toolName.replacingOccurrences(
         of: "([a-z0-9])([A-Z])", with: "$1-$2", options: .regularExpression
@@ -69,7 +60,6 @@ enum AgentDiscovery {
       examples: ["Fetch the transcript for /videos/play/wwdc2021/10133"]),
   ]
 
-  /// Discovery links advertised on the homepage.
   static let linkHeader = [
     "</.well-known/api-catalog>; rel=\"api-catalog\"",
     "</.well-known/agent-card.json>; rel=\"service-desc\"; type=\"application/json\"",
@@ -77,10 +67,6 @@ enum AgentDiscovery {
     "</llms.txt>; rel=\"alternate\"; type=\"text/markdown\"",
   ].joined(separator: ", ")
 
-  // MARK: - Origin
-
-  /// The public origin clients should use to reach this server, honoring reverse-proxy
-  /// forwarding headers before falling back to the request `Host` and the bind address.
   static func origin(for request: Request, fallbackHost: String) -> String {
     let scheme = request.headers[.init("X-Forwarded-Proto")!]?.split(separator: ",").first.map {
       $0.trimmingCharacters(in: .whitespaces)
@@ -91,8 +77,6 @@ enum AgentDiscovery {
     return "\(scheme ?? "http")://\(host ?? request.head.authority ?? fallbackHost)"
   }
 
-  // MARK: - Documents
-
   static func agentCard(origin: String, serverName: String, version: String) -> String {
     let card: [String: Any] = [
       "name": serverName,
@@ -102,8 +86,7 @@ enum AgentDiscovery {
         [
           "url": origin,
           "protocolVersion": a2aProtocolVersion,
-          // Named `protocolBinding` by the current A2A proto schema; `transport` is kept
-          // for clients reading the published JSON schema.
+          // A2A's proto schema names this `protocolBinding`; its JSON schema uses `transport`.
           "protocolBinding": a2aTransport,
           "transport": a2aTransport,
         ]
@@ -132,8 +115,6 @@ enum AgentDiscovery {
     return encodeJSON(card)
   }
 
-  /// RFC 9727 API catalog. Only the HTTP documentation surface is listed, because the
-  /// MCP server runs over stdio rather than at an HTTP endpoint.
   static func apiCatalog(origin: String) -> String {
     let catalog: [String: Any] = [
       "linkset": [
@@ -150,7 +131,6 @@ enum AgentDiscovery {
     return encodeJSON(catalog)
   }
 
-  /// agentskills.io discovery index for the served skill.
   static func skillIndex(origin: String) -> String {
     let markdown = skillMarkdown(origin: origin)
     let digest = SHA256.hash(data: Data(markdown.utf8))

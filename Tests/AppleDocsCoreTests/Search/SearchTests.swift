@@ -6,9 +6,6 @@ import Testing
 @Suite("Search Parser Tests")
 struct SearchTests {
 
-  /// A `quickSearch` event followed by a `search` payload split into diff events the way
-  /// Apple's backend streams them: each event appends to a buffer after dropping
-  /// `removeLast` characters from its end.
   private let jsonlPayload: String = {
     let quickSearch = """
       {"kind":"quickSearch","response":{"results":[{"metadata":{"title":"SchemaMigrationPlan","permalink":"https://developer.apple.com/documentation/swiftdata/schemamigrationplan","description":"An interface for describing the evolution of a schema and how to migrate between specific versions.","hierarchy":"SwiftData > SchemaMigrationPlan","kind":"symbol","metadataKind":"documentation"},"origin":"documentation"},{"metadata":{"title":"Get Started - SwiftUI","sourceURL":"https://developer.apple.com/swiftui/get-started/","description":"SwiftUI provides everything you need to begin designing.","metadataKind":"webPage"},"origin":"developerWeb"}]}}
@@ -221,7 +218,6 @@ struct SearchTests {
   func parseSearchEventsFromJSONL() throws {
     let results = try AppleDocsSearcher.parseSearchEvents(jsonlPayload)
 
-    // The documentation result appears in both channels and is reported once.
     #expect(results.count == 4)
 
     #expect(results[0].title == "SchemaMigrationPlan")

@@ -97,10 +97,6 @@ public struct ContentRenderer: Sendable {
 
   // MARK: - Link Resolution
 
-  /// Resolve the display title for a reference, preferring its rich `titleInlineContent`
-  /// (which preserves code spans) over the flat `title`. When there is no rich title,
-  /// wrap symbol titles in backticks so older DocC pages that omit `titleInlineContent`
-  /// still render code spans in link text.
   static func resolveReferenceTitle(
     _ reference: ContentItem?, references: [String: ContentItem]?, depth: Int = 0,
     externalOrigin: String? = nil
@@ -113,6 +109,7 @@ public struct ContentRenderer: Sendable {
       if let rendered = nonEmpty(rendered) { return rendered }
     }
     guard let title = nonEmpty(reference.title) else { return nil }
+    // Older DocC pages omit titleInlineContent, so symbols still need their code span.
     return reference.role == "symbol" ? "`\(title)`" : title
   }
 
@@ -123,8 +120,6 @@ public struct ContentRenderer: Sendable {
     public let deprecated: Bool
   }
 
-  /// Resolve an identifier to a Markdown link, drawing the title and abstract from the
-  /// page's variants first, then the shared references map, and finally the identifier.
   public static func resolveLink(
     _ id: String, variants: [Variant]?, references: [String: ContentItem]?,
     externalOrigin: String? = nil
@@ -237,8 +232,7 @@ public struct ContentRenderer: Sendable {
     externalOrigin: String?
   ) -> String {
     guard let inlineContent = item.inlineContent else { return "" }
-    // Inline nesting is counted separately from block nesting, so a paragraph's
-    // inline content starts a fresh depth budget.
+    // Inline depth is budgeted separately from block depth.
     let text = renderInlineContent(
       inlineContent, references: references, depth: 0, externalOrigin: externalOrigin)
     return "\(text)\n\n"
@@ -281,8 +275,6 @@ public struct ContentRenderer: Sendable {
 
   // MARK: - Markdown Formatting
 
-  /// Format pre-rendered item contents as a Markdown list, terminated by a blank line
-  /// so following blocks aren't absorbed into the last item.
   public static func formatList(_ itemContents: [String], ordered: Bool) -> String {
     guard !itemContents.isEmpty else { return "" }
     let items = itemContents.enumerated().map { index, content in
@@ -291,8 +283,6 @@ public struct ContentRenderer: Sendable {
     return "\(items.joined())\n"
   }
 
-  /// Format rendered content as a list item, indenting continuation lines (including
-  /// nested lists) under the marker.
   private static func formatListItem(marker: String, content: String) -> String {
     let trimmed = content.replacingOccurrences(
       of: #"\n+$"#, with: "", options: .regularExpression)
@@ -300,8 +290,7 @@ public struct ContentRenderer: Sendable {
       return "\(marker.replacingOccurrences(of: #"\s+$"#, with: "", options: .regularExpression))\n"
     }
 
-    // Collapse blank lines immediately before a nested list so it stays tight under
-    // its parent item; keep other paragraph breaks.
+    // Keep nested lists tight under their parent item; other paragraph breaks stay.
     let tightened = trimmed.replacingOccurrences(
       of: #"\n{2,}(?=(?:[-*]|\d+\.) )"#, with: "\n", options: .regularExpression)
     let indent = String(repeating: " ", count: marker.count)
@@ -310,8 +299,6 @@ public struct ContentRenderer: Sendable {
     return "\(marker)\(([lines[0]] + continuation).joined(separator: "\n"))\n"
   }
 
-  /// Format rendered content as a GitHub-style callout. An optional lead becomes the
-  /// callout's first paragraph, ahead of the content.
   public static func formatCallout(_ type: String, content: String, lead: String? = nil)
     -> String
   {
@@ -531,7 +518,6 @@ public struct ContentRenderer: Sendable {
     return formatCallout(mapAsideStyleToCallout(style), content: asideContent, lead: lead)
   }
 
-  /// Leading paragraph for callouts that flag deprecated APIs.
   public static let deprecatedLead = "**Deprecated**"
 
   // MARK: - Image Rendering
@@ -639,7 +625,6 @@ public struct ContentRenderer: Sendable {
   ) -> String {
     var markdown = ""
     for topic in topics {
-      // DocC emits untitled topic groups; their links still belong in the output.
       if !topic.title.isEmpty {
         markdown += "## \(topic.title)\n\n"
       }

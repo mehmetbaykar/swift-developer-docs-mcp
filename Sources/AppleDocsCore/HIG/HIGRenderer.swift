@@ -320,9 +320,6 @@ public struct HIGRenderer: Sendable {
 
   // MARK: - Tab navigator rendering
 
-  /// Render a HIG tabNavigator by flattening its tabs into a sequence. Only one tab is
-  /// visible at a time on the web, so rendering them all keeps the content of every tab
-  /// (such as the per-Dynamic Type size tables on the Typography page).
   static func renderHIGTabNavigator(
     _ item: ContentItem,
     references: [String: HIGReferenceItem]
@@ -331,10 +328,8 @@ public struct HIGRenderer: Sendable {
 
     var markdown = ""
     for tab in tabs {
-      // Tabs usually repeat their title as a heading in their own content, so only add a
-      // label when the title would otherwise be lost. A leading heading stands in for the
-      // label when it repeats the title, possibly with a qualifier, as in "Small" and
-      // "Small (default 38mm)".
+      // A leading heading that repeats the tab title ("Small" / "Small (default 38mm)")
+      // already labels the tab.
       let label = tab.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
       let leadingHeading: String? = {
         guard let first = tab.content?.first, first.type == "heading" else { return nil }
@@ -359,7 +354,6 @@ public struct HIGRenderer: Sendable {
     _ item: ContentItem,
     references: [String: HIGReferenceItem]
   ) -> String {
-    // Apple's HIG JSON emits row columns under `columns`; older payloads used `content`.
     guard let columns = item.columns ?? item.content, !columns.isEmpty else { return "" }
 
     var markdown = ""
@@ -523,7 +517,6 @@ public struct HIGRenderer: Sendable {
 
     for item in items {
       if item.type == "module" || item.type == "symbol" {
-        // Ensure a blank line before the heading when the preceding content was a list.
         if !markdown.isEmpty && !markdown.hasSuffix("\n\n") {
           markdown += "\n"
         }
