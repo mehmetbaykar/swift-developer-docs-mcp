@@ -71,7 +71,7 @@ npx @mehmetbaykar/swift-developer-docs-mcp hig foundations/color
 npx @mehmetbaykar/swift-developer-docs-mcp video videos/play/wwdc2024/10133
 
 # Fetch external Swift-DocC documentation
-npx @mehmetbaykar/swift-developer-docs-mcp external https://apple.github.io/swift-argument-parser/documentation/argumentparser
+npx @mehmetbaykar/swift-developer-docs-mcp external https://swiftlang.github.io/swift-markdown/documentation/markdown
 
 # Start the HTTP server
 npx @mehmetbaykar/swift-developer-docs-mcp serve --port 8080

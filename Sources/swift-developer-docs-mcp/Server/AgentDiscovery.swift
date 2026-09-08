@@ -59,7 +59,7 @@ enum AgentDiscovery {
         "Fetch external Swift-DocC documentation by absolute https URL and return as markdown",
       tags: ["swift-docc", "documentation", "markdown"],
       examples: [
-        "Fetch https://apple.github.io/swift-argument-parser/documentation/argumentparser"
+        "Fetch https://swiftlang.github.io/swift-markdown/documentation/markdown"
       ]),
     SkillDefinition(
       toolName: "fetchAppleVideoTranscript",
@@ -246,7 +246,7 @@ enum AgentDiscovery {
     ### External Swift-DocC
 
     - Pattern: `\(origin)/external/{full-https-url}`
-    - Example: `\(origin)/external/https://apple.github.io/swift-argument-parser/documentation/argumentparser/`
+    - Example: `\(origin)/external/https://swiftlang.github.io/swift-markdown/documentation/markdown`
 
     ## MCP Tools Quick Reference
 
