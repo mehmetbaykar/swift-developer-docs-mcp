@@ -144,6 +144,61 @@ struct HIGRendererTests {
     #expect(markdown.contains("- [Color]"))
   }
 
+  @Test("Renders collection groups and their nested articles")
+  func renderCollectionTableOfContents() {
+    let toc = HIGTableOfContents(
+      includedArchiveIdentifiers: [],
+      interfaceLanguages: HIGInterfaceLanguages(swift: [
+        HIGTocItem(
+          children: [
+            HIGTocItem(
+              children: [
+                HIGTocItem(
+                  children: [
+                    HIGTocItem(
+                      path: "/design/human-interface-guidelines/buttons",
+                      title: "Buttons",
+                      type: "article"
+                    )
+                  ],
+                  path: "/design/human-interface-guidelines/menus-and-actions",
+                  title: "Menus and actions",
+                  type: "collection"
+                )
+              ],
+              path: "/design/human-interface-guidelines/components",
+              title: "Components",
+              type: "collection"
+            )
+          ],
+          path: "/design/human-interface-guidelines",
+          title: "Human Interface Guidelines",
+          type: "module"
+        )
+      ]),
+      references: [:],
+      schemaVersion: SchemaVersion(major: 0, minor: 3, patch: 0)
+    )
+
+    let items = HIGRenderer.renderHIGTocItems(toc.interfaceLanguages.swift, headingLevel: 2)
+    #expect(
+      items
+        == """
+        ## Human Interface Guidelines
+
+        ### Components
+
+        #### Menus and actions
+
+        - [Buttons](/design/human-interface-guidelines/buttons)
+
+        """)
+    #expect(
+      HIGRenderer.renderHIGTableOfContents(toc: toc).contains(
+        "### Components\n\n#### Menus and actions\n\n- [Buttons](/design/human-interface-guidelines/buttons)\n"
+      ))
+  }
+
   // MARK: - Inline content
 
   @Test("Renders inline emphasis and strong")
@@ -478,5 +533,182 @@ struct HIGRendererTests {
         depth: 21
       ) == "[Inline content too deeply nested]"
     )
+  }
+
+  // MARK: - Tab navigator
+
+  @Test("Renders every tab when a heading repeats the title")
+  func tabHeadingRepeatsTitle() {
+    let item = ContentItem(
+      type: "tabNavigator",
+      tabs: [
+        TabNavigatorTab(
+          title: "xSmall",
+          content: [
+            ContentItem(text: "xSmall", type: "heading", level: 4),
+            sizeTable(style: "Large Title", size: "31"),
+          ]),
+        TabNavigatorTab(
+          title: "Large (default)",
+          content: [
+            ContentItem(text: "Large (default)", type: "heading", level: 4),
+            sizeTable(style: "Large Title", size: "34"),
+          ]),
+      ])
+
+    let result = HIGRenderer.renderHIGContent(sections: [item], references: [:])
+    #expect(
+      result
+        == """
+        #### xSmall
+
+        | Style | Size (points) |
+        | --- | --- |
+        | Large Title | 31 |
+
+        #### Large (default)
+
+        | Style | Size (points) |
+        | --- | --- |
+        | Large Title | 34 |
+
+
+        """)
+  }
+
+  @Test("Omits the tab label when a heading starts with the title")
+  func tabHeadingQualifierOmitsLabel() {
+    let item = ContentItem(
+      type: "tabNavigator",
+      tabs: [
+        TabNavigatorTab(
+          title: "Small",
+          content: [
+            ContentItem(text: "Small (default 38mm)", type: "heading", level: 4),
+            ContentItem(
+              type: "paragraph",
+              inlineContent: [ContentItem(text: "Compact", type: "text")]),
+          ])
+      ])
+
+    let result = HIGRenderer.renderHIGContent(sections: [item], references: [:])
+    #expect(
+      result
+        == """
+        #### Small (default 38mm)
+
+        Compact
+
+
+        """)
+  }
+
+  @Test("Labels HIG tabs that do not lead with a heading")
+  func tabWithoutHeadingAddsLabel() {
+    let item = ContentItem(
+      type: "tabNavigator",
+      tabs: [
+        TabNavigatorTab(
+          title: "SF Pro",
+          content: [
+            ContentItem(
+              type: "paragraph",
+              inlineContent: [ContentItem(text: "Neutral", type: "text")])
+          ]),
+        TabNavigatorTab(
+          title: "New York",
+          content: [
+            ContentItem(
+              type: "paragraph",
+              inlineContent: [ContentItem(text: "Serif", type: "text")])
+          ]),
+      ])
+
+    let result = HIGRenderer.renderHIGContent(sections: [item], references: [:])
+    #expect(
+      result
+        == """
+        **SF Pro**
+
+        Neutral
+
+        **New York**
+
+        Serif
+
+
+        """)
+  }
+
+  @Test("Keeps the tab label when the leading heading does not repeat the title")
+  func tabDifferentHeadingKeepsLabel() {
+    let item = ContentItem(
+      type: "tabNavigator",
+      tabs: [
+        TabNavigatorTab(
+          title: "Large",
+          content: [
+            ContentItem(text: "Overview", type: "heading", level: 4),
+            ContentItem(
+              type: "paragraph",
+              inlineContent: [ContentItem(text: "Roomy", type: "text")]),
+          ])
+      ])
+
+    let result = HIGRenderer.renderHIGContent(sections: [item], references: [:])
+    #expect(
+      result
+        == """
+        **Large**
+
+        #### Overview
+
+        Roomy
+
+
+        """)
+  }
+
+  @Test("Renders an empty tab navigator as an empty string")
+  func emptyTabNavigator() {
+    #expect(
+      HIGRenderer.renderHIGContent(
+        sections: [ContentItem(type: "tabNavigator")],
+        references: [:]
+      ) == "")
+    #expect(
+      HIGRenderer.renderHIGContent(
+        sections: [ContentItem(type: "tabNavigator", tabs: [])],
+        references: [:]
+      ) == "")
+  }
+
+  private func sizeTable(style: String, size: String) -> ContentItem {
+    ContentItem(
+      type: "table",
+      header: "row",
+      rows: [
+        [
+          [
+            ContentItem(
+              type: "paragraph", inlineContent: [ContentItem(text: "Style", type: "text")])
+          ],
+          [
+            ContentItem(
+              type: "paragraph",
+              inlineContent: [ContentItem(text: "Size (points)", type: "text")])
+          ],
+        ],
+        [
+          [
+            ContentItem(
+              type: "paragraph", inlineContent: [ContentItem(text: style, type: "text")])
+          ],
+          [
+            ContentItem(
+              type: "paragraph", inlineContent: [ContentItem(text: size, type: "text")])
+          ],
+        ],
+      ])
   }
 }

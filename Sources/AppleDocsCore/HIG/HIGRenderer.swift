@@ -230,6 +230,9 @@ public struct HIGRenderer: Sendable {
     case "aside":
       markdown += Self.renderHIGAside(item, references: references, depth: depth)
 
+    case "tabNavigator":
+      markdown += Self.renderHIGTabNavigator(item, references: references, depth: depth)
+
     case "row":
       markdown += Self.renderHIGRow(item, references: references, depth: depth)
 
@@ -311,6 +314,39 @@ public struct HIGRenderer: Sendable {
       type: MarkdownFormatting.mapAsideStyleToCallout(rawType),
       content: asideContent
     )
+  }
+
+  // MARK: - Tab navigator
+
+  static func renderHIGTabNavigator(
+    _ item: ContentItem,
+    references: [String: HIGReferenceItem],
+    depth: Int = 0
+  ) -> String {
+    guard let tabs = item.tabs, !tabs.isEmpty else { return "" }
+
+    var markdown = ""
+    for tab in tabs {
+      let label = tab.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+      let first = tab.content?.first
+      let leadingHeading =
+        first?.type == "heading"
+        ? (first?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines) : nil
+      let headingRepeatsTitle: Bool
+      if let label, let leadingHeading {
+        headingRepeatsTitle = leadingHeading.lowercased().hasPrefix(label.lowercased())
+      } else {
+        headingRepeatsTitle = false
+      }
+      if let label, !label.isEmpty, !headingRepeatsTitle {
+        markdown += "**\(label)**\n\n"
+      }
+      if let content = tab.content, !content.isEmpty {
+        markdown += Self.renderHIGContent(
+          sections: content, references: references, depth: depth + 1)
+      }
+    }
+    return markdown
   }
 
   // MARK: - Row rendering
@@ -492,7 +528,10 @@ public struct HIGRenderer: Sendable {
     var markdown = ""
 
     for item in items {
-      if item.type == "module" || item.type == "symbol" {
+      if item.type == "module" || item.type == "symbol" || item.type == "collection" {
+        if !markdown.isEmpty && !markdown.hasSuffix("\n\n") {
+          markdown += "\n"
+        }
         let hashes = String(repeating: "#", count: min(headingLevel, 6))
         markdown += "\(hashes) \(item.title)\n\n"
 
