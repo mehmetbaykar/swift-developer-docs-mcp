@@ -322,4 +322,161 @@ struct HIGRendererTests {
     let result = HIGRenderer.renderHIGVideo(item, references: refs)
     #expect(result.contains("[Alt Text]"))
   }
+
+  @Test("Normalizes DocC occ syntax to objc")
+  func normalizesObjectiveCSyntax() {
+    let result = HIGRenderer.renderHIGContent(
+      sections: [
+        ContentItem(
+          type: "codeListing",
+          code: .multiple(["NSButton *button;"]),
+          syntax: "occ")
+      ],
+      references: [:]
+    )
+    #expect(result.contains("```objc\nNSButton *button;\n```"))
+  }
+
+  @Test("Indents nested unordered lists under their parent item")
+  func nestedUnorderedList() {
+    let result = HIGRenderer.renderHIGContent(
+      sections: [
+        ContentItem(
+          type: "unorderedList",
+          items: [
+            ContentItem(content: [
+              ContentItem(
+                type: "paragraph",
+                inlineContent: [ContentItem(text: "Parent item:", type: "text")]),
+              ContentItem(
+                type: "unorderedList",
+                items: [
+                  ContentItem(content: [
+                    ContentItem(
+                      type: "paragraph",
+                      inlineContent: [ContentItem(text: "Nested item", type: "text")])
+                  ])
+                ]),
+            ])
+          ])
+      ],
+      references: [:]
+    )
+    #expect(result.contains(["- Parent item:", "  - Nested item"].joined(separator: "\n")))
+  }
+
+  @Test("Indents nested content under ordered list markers")
+  func nestedOrderedList() {
+    let result = HIGRenderer.renderHIGContent(
+      sections: [
+        ContentItem(
+          type: "orderedList",
+          items: [
+            ContentItem(content: [
+              ContentItem(
+                type: "paragraph",
+                inlineContent: [ContentItem(text: "Parent item:", type: "text")]),
+              ContentItem(
+                type: "unorderedList",
+                items: [
+                  ContentItem(content: [
+                    ContentItem(
+                      type: "paragraph",
+                      inlineContent: [ContentItem(text: "Nested item", type: "text")])
+                  ])
+                ]),
+            ])
+          ])
+      ],
+      references: [:]
+    )
+    #expect(result.contains(["1. Parent item:", "   - Nested item"].joined(separator: "\n")))
+  }
+
+  @Test("Keeps rendering inline content inside deeply nested blocks")
+  func inlineContentInsideDeepBlocks() {
+    func nestBlocks(_ depth: Int) -> ContentItem {
+      let paragraph = ContentItem(
+        type: "paragraph",
+        inlineContent: [ContentItem(text: "Level \(depth) text", type: "text")]
+      )
+      if depth <= 0 {
+        return ContentItem(content: [paragraph])
+      }
+      return ContentItem(content: [
+        paragraph,
+        ContentItem(type: "unorderedList", items: [nestBlocks(depth - 1)]),
+      ])
+    }
+
+    let result = HIGRenderer.renderHIGContent(
+      sections: [
+        ContentItem(type: "unorderedList", items: [nestBlocks(30)])
+      ],
+      references: [:]
+    )
+    #expect(!result.contains("[Inline content too deeply nested]"))
+    #expect(result.contains("Level 0 text"))
+    #expect(result.contains("Level 30 text"))
+  }
+
+  @Test("Returns the content depth placeholder past the block limit")
+  func contentDepthGuard() {
+    func createDeepContent(_ depth: Int) -> ContentItem {
+      if depth <= 0 {
+        return ContentItem(
+          type: "paragraph",
+          inlineContent: [ContentItem(text: "Deep content", type: "text")])
+      }
+      return ContentItem(
+        type: "aside",
+        content: [createDeepContent(depth - 1)],
+        style: "note")
+    }
+
+    let result = HIGRenderer.renderHIGContent(
+      sections: [createDeepContent(100)],
+      references: [:]
+    )
+    #expect(result.contains("[Content too deeply nested]"))
+    #expect(
+      HIGRenderer.renderHIGContent(
+        sections: [
+          ContentItem(
+            type: "paragraph",
+            inlineContent: [ContentItem(text: "too deep", type: "text")])
+        ],
+        references: [:],
+        depth: 51
+      ) == "[Content too deeply nested]"
+    )
+  }
+
+  @Test("Returns the inline depth placeholder past the inline limit")
+  func inlineDepthGuard() {
+    func createDeepInline(_ depth: Int) -> ContentItem {
+      if depth <= 0 {
+        return ContentItem(text: "Deep inline text", type: "text")
+      }
+      return ContentItem(
+        type: depth % 2 == 0 ? "emphasis" : "strong",
+        inlineContent: [createDeepInline(depth - 1)]
+      )
+    }
+
+    let result = HIGRenderer.renderHIGContent(
+      sections: [
+        ContentItem(type: "paragraph", inlineContent: [createDeepInline(50)])
+      ],
+      references: [:]
+    )
+    #expect(result.contains("[Inline content too deeply nested]"))
+    #expect(
+      HIGRenderer.renderHIGInlineContent(
+        [ContentItem(text: "too deep", type: "text")],
+        references: [:],
+        depth: 21
+      ) == "[Inline content too deeply nested]"
+    )
+  }
 }

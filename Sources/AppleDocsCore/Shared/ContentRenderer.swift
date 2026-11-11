@@ -1,8 +1,6 @@
 import Foundation
 
 public struct ContentRenderer: Sendable {
-  private static let maxContentDepth = 50
-  private static let maxInlineDepth = 20
   private static let languageTabTitles: Set<String> = ["Swift", "Objective-C"]
 
   // MARK: - Inline Content Rendering
@@ -11,8 +9,8 @@ public struct ContentRenderer: Sendable {
     _ inlineContent: [ContentItem], references: [String: ContentItem]?, depth: Int = 0,
     externalOrigin: String? = nil
   ) -> String {
-    if depth > maxInlineDepth {
-      return "[Inline content too deeply nested]"
+    if depth > MarkdownFormatting.maxInlineDepth {
+      return MarkdownFormatting.inlineContentTooDeep
     }
 
     return inlineContent.map { item in
@@ -99,8 +97,8 @@ public struct ContentRenderer: Sendable {
     _ content: [ContentItem], references: [String: ContentItem]?, depth: Int = 0,
     externalOrigin: String? = nil
   ) -> String {
-    if depth > maxContentDepth {
-      return "[Content too deeply nested]"
+    if depth > MarkdownFormatting.maxContentDepth {
+      return MarkdownFormatting.contentTooDeep
     }
 
     var markdown = ""
@@ -185,7 +183,7 @@ public struct ContentRenderer: Sendable {
   ) -> String {
     guard let inlineContent = item.inlineContent else { return "" }
     let text = renderInlineContent(
-      inlineContent, references: references, depth: depth, externalOrigin: externalOrigin)
+      inlineContent, references: references, depth: 0, externalOrigin: externalOrigin)
     return "\(text)\n\n"
   }
 
@@ -200,8 +198,7 @@ public struct ContentRenderer: Sendable {
       code = ""
     }
 
-    let syntax = normalizeFenceLanguage(item.syntax ?? "swift")
-    return "```\(syntax)\n\(code)\n```\n\n"
+    return MarkdownFormatting.formatCodeBlock(code, syntax: item.syntax)
   }
 
   private static func renderList(
@@ -213,27 +210,15 @@ public struct ContentRenderer: Sendable {
   ) -> String {
     guard let items = item.items else { return "" }
 
-    var markdown = ""
-    for (index, listItem) in items.enumerated() {
-      let itemText = renderContentArray(
+    let itemContents = items.map { listItem in
+      renderContentArray(
         listItem.content ?? [],
         references: references,
         depth: depth + 1,
         externalOrigin: externalOrigin
       )
-      let normalized = itemText.replacingOccurrences(
-        of: "\\n\\n$",
-        with: "",
-        options: .regularExpression
-      )
-      if ordered {
-        markdown += "\(index + 1). \(normalized)\n"
-      } else {
-        markdown += "- \(normalized)\n"
-      }
     }
-
-    return markdown.isEmpty ? "" : "\(markdown)\n"
+    return MarkdownFormatting.formatList(itemContents, ordered: ordered)
   }
 
   private static func renderRow(
@@ -398,30 +383,13 @@ public struct ContentRenderer: Sendable {
   ) -> String {
     guard let rows = item.rows, !rows.isEmpty else { return "" }
 
-    let firstRowIsHeader = item.header == "row"
-    var markdown = ""
-
-    for (rowIndex, row) in rows.enumerated() {
-      let cells = row.map { cell -> String in
-        let rendered = renderContentArray(
+    let renderedRows = rows.map { row in
+      row.map { cell in
+        renderContentArray(
           cell, references: references, depth: depth + 1, externalOrigin: externalOrigin)
-        return escapeTableCell(rendered)
-      }
-      guard !cells.isEmpty else { continue }
-      markdown += "| \(cells.joined(separator: " | ")) |\n"
-      if firstRowIsHeader && rowIndex == 0 {
-        markdown += "| \(cells.map { _ in "---" }.joined(separator: " | ")) |\n"
       }
     }
-
-    return markdown.isEmpty ? "" : "\(markdown)\n"
-  }
-
-  private static func escapeTableCell(_ text: String) -> String {
-    text
-      .replacingOccurrences(of: "|", with: "\\|")
-      .replacingOccurrences(of: "\n", with: " ")
-      .trimmingCharacters(in: .whitespacesAndNewlines)
+    return MarkdownFormatting.formatTable(renderedRows, hasHeaderRow: item.header == "row")
   }
 
   // MARK: - Aside Rendering
@@ -431,16 +399,17 @@ public struct ContentRenderer: Sendable {
     externalOrigin: String? = nil
   ) -> String {
     let style = item.style ?? "note"
-    let calloutType = mapAsideStyleToCallout(style)
     let asideContent =
       item.content != nil
       ? renderContentArray(
         item.content!, references: references, depth: depth + 1, externalOrigin: externalOrigin)
       : ""
-    let cleanContent = asideContent.trimmingCharacters(in: .whitespacesAndNewlines)
-      .replacingOccurrences(of: "\n", with: "\n> ")
-    let deprecatedLabel = style.lowercased() == "deprecated" ? "**Deprecated**\n>\n> " : ""
-    return "> [!\(calloutType)]\n> \(deprecatedLabel)\(cleanContent)\n\n"
+    let lead = style.lowercased() == "deprecated" ? "**Deprecated**" : nil
+    return MarkdownFormatting.formatCallout(
+      type: mapAsideStyleToCallout(style),
+      content: asideContent,
+      lead: lead
+    )
   }
 
   // MARK: - Image Rendering
@@ -549,15 +518,7 @@ public struct ContentRenderer: Sendable {
   // MARK: - Utility Functions
 
   public static func mapAsideStyleToCallout(_ style: String) -> String {
-    switch style.lowercased() {
-    case "warning": return "WARNING"
-    case "important": return "IMPORTANT"
-    case "caution": return "CAUTION"
-    case "tip": return "TIP"
-    case "experiment": return "NOTE"
-    case "deprecated": return "WARNING"
-    default: return "NOTE"
-    }
+    MarkdownFormatting.mapAsideStyleToCallout(style)
   }
 
   public static func convertIdentifierToURL(

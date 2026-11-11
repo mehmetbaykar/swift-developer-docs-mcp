@@ -970,4 +970,245 @@ struct ContentRendererTests {
       #expect(result == "")
     }
   }
+
+  @Suite("Nested Markdown")
+  struct NestedMarkdown {
+    @Test("Indents nested unordered lists under their parent item")
+    func nestedUnorderedList() {
+      let items = [
+        ContentItem(
+          type: "unorderedList",
+          items: [
+            ContentItem(content: [
+              ContentItem(
+                type: "paragraph",
+                inlineContent: [
+                  ContentItem(
+                    text: "This release removes support for the following deprecated ",
+                    type: "text"),
+                  ContentItem(type: "codeVoice", code: .single("NSPersistentStore")),
+                  ContentItem(text: " option keys:", type: "text"),
+                ]),
+              ContentItem(
+                type: "unorderedList",
+                items: [
+                  ContentItem(content: [
+                    ContentItem(
+                      type: "paragraph",
+                      inlineContent: [
+                        ContentItem(
+                          type: "codeVoice",
+                          code: .single("NSPersistentStoreUbiquitousContentNameKey"))
+                      ])
+                  ]),
+                  ContentItem(content: [
+                    ContentItem(
+                      type: "paragraph",
+                      inlineContent: [
+                        ContentItem(
+                          type: "codeVoice",
+                          code: .single("NSPersistentStoreUbiquitousContentURLKey"))
+                      ])
+                  ]),
+                ]),
+            ])
+          ])
+      ]
+      let result = ContentRenderer.renderContentArray(items, references: nil)
+      #expect(
+        result.contains(
+          [
+            "- This release removes support for the following deprecated `NSPersistentStore` option keys:",
+            "  - `NSPersistentStoreUbiquitousContentNameKey`",
+            "  - `NSPersistentStoreUbiquitousContentURLKey`",
+          ].joined(separator: "\n"))
+      )
+    }
+
+    @Test("Preserves paragraph breaks inside list items")
+    func paragraphBreaksInsideListItem() {
+      let items = [
+        ContentItem(
+          type: "unorderedList",
+          items: [
+            ContentItem(content: [
+              ContentItem(
+                type: "paragraph",
+                inlineContent: [ContentItem(text: "First paragraph.", type: "text")]),
+              ContentItem(
+                type: "paragraph",
+                inlineContent: [ContentItem(text: "Second paragraph.", type: "text")]),
+            ])
+          ])
+      ]
+      let result = ContentRenderer.renderContentArray(items, references: nil)
+      #expect(result.contains("- First paragraph.\n\n  Second paragraph."))
+    }
+
+    @Test("Indents nested content under ordered list markers")
+    func orderedNestedList() {
+      let items = [
+        ContentItem(
+          type: "orderedList",
+          items: [
+            ContentItem(content: [
+              ContentItem(
+                type: "paragraph",
+                inlineContent: [ContentItem(text: "First paragraph.", type: "text")]),
+              ContentItem(
+                type: "paragraph",
+                inlineContent: [ContentItem(text: "Second paragraph.", type: "text")]),
+              ContentItem(
+                type: "unorderedList",
+                items: [
+                  ContentItem(content: [
+                    ContentItem(
+                      type: "paragraph",
+                      inlineContent: [ContentItem(text: "Nested item", type: "text")])
+                  ])
+                ]),
+            ])
+          ])
+      ]
+      let result = ContentRenderer.renderContentArray(items, references: nil)
+      #expect(
+        result.contains(
+          ["1. First paragraph.", "", "   Second paragraph.", "   - Nested item"].joined(
+            separator: "\n"))
+      )
+    }
+
+    @Test("Indents an unordered list nested three levels inside an ordered list")
+    func threeLevelNestedList() {
+      let items = [
+        ContentItem(
+          type: "orderedList",
+          items: [
+            ContentItem(content: [
+              ContentItem(
+                type: "paragraph",
+                inlineContent: [ContentItem(text: "Level 1", type: "text")]),
+              ContentItem(
+                type: "unorderedList",
+                items: [
+                  ContentItem(content: [
+                    ContentItem(
+                      type: "paragraph",
+                      inlineContent: [ContentItem(text: "Level 2", type: "text")]),
+                    ContentItem(
+                      type: "unorderedList",
+                      items: [
+                        ContentItem(content: [
+                          ContentItem(
+                            type: "paragraph",
+                            inlineContent: [ContentItem(text: "Level 3", type: "text")])
+                        ])
+                      ]),
+                  ])
+                ]),
+            ])
+          ])
+      ]
+      let result = ContentRenderer.renderContentArray(items, references: nil)
+      #expect(result == "1. Level 1\n   - Level 2\n     - Level 3\n\n")
+    }
+
+    @Test("Indents a code block inside a list item")
+    func codeBlockInListItem() {
+      let items = [
+        ContentItem(
+          type: "unorderedList",
+          items: [
+            ContentItem(content: [
+              ContentItem(
+                type: "paragraph",
+                inlineContent: [ContentItem(text: "See:", type: "text")]),
+              ContentItem(type: "codeListing", code: .single("let x = 1"), syntax: "swift"),
+            ])
+          ])
+      ]
+      let result = ContentRenderer.renderContentArray(items, references: nil)
+      #expect(result == "- See:\n\n  ```swift\n  let x = 1\n  ```\n\n")
+    }
+
+    @Test("Escapes a pipe and a line break inside a table cell")
+    func tablePipeAndLineBreak() {
+      let item = ContentItem(
+        type: "table",
+        rows: [
+          [
+            [
+              ContentItem(
+                type: "paragraph",
+                inlineContent: [ContentItem(text: "a|b\nnext line", type: "text")])
+            ]
+          ]
+        ]
+      )
+      let result = ContentRenderer.renderTable(item, references: nil)
+      #expect(result == "| a\\|b next line |\n\n")
+    }
+
+    @Test("Quotes each line of a two-paragraph callout")
+    func calloutTwoParagraphs() {
+      let item = ContentItem(
+        type: "aside",
+        content: [
+          ContentItem(
+            type: "paragraph",
+            inlineContent: [ContentItem(text: "First.", type: "text")]),
+          ContentItem(
+            type: "paragraph",
+            inlineContent: [ContentItem(text: "Second.", type: "text")]),
+        ],
+        style: "note")
+      let result = ContentRenderer.renderAside(item, references: nil)
+      #expect(result == "> [!NOTE]\n> First.\n>\n> Second.\n\n")
+    }
+
+    @Test("Keeps the deprecated lead ahead of aside content")
+    func calloutWithLead() {
+      let item = ContentItem(
+        type: "aside",
+        content: [
+          ContentItem(
+            type: "paragraph",
+            inlineContent: [ContentItem(text: "Body.", type: "text")])
+        ],
+        style: "deprecated")
+      let result = ContentRenderer.renderAside(item, references: nil)
+      #expect(result == "> [!WARNING]\n> **Deprecated**\n>\n> Body.\n\n")
+    }
+
+    @Test("Renders an empty aside as nothing")
+    func emptyCallout() {
+      let item = ContentItem(type: "aside", style: "note")
+      #expect(ContentRenderer.renderAside(item, references: nil) == "")
+    }
+
+    @Test("Keeps rendering inline content inside deeply nested blocks")
+    func inlineContentInsideDeepBlocks() {
+      func nestBlocks(_ depth: Int) -> ContentItem {
+        let paragraph = ContentItem(
+          type: "paragraph",
+          inlineContent: [ContentItem(text: "Level \(depth) text", type: "text")]
+        )
+        if depth <= 0 {
+          return ContentItem(content: [paragraph])
+        }
+        return ContentItem(content: [
+          paragraph,
+          ContentItem(type: "unorderedList", items: [nestBlocks(depth - 1)]),
+        ])
+      }
+
+      let items = [
+        ContentItem(type: "unorderedList", items: [nestBlocks(30)])
+      ]
+      let result = ContentRenderer.renderContentArray(items, references: nil)
+      #expect(!result.contains("[Inline content too deeply nested]"))
+      #expect(result.contains("Level 0 text"))
+      #expect(result.contains("Level 30 text"))
+    }
+  }
 }

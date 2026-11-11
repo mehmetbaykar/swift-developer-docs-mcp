@@ -165,12 +165,17 @@ public struct HIGRenderer: Sendable {
 
   static func renderHIGContent(
     sections: [ContentItem],
-    references: [String: HIGReferenceItem]
+    references: [String: HIGReferenceItem],
+    depth: Int = 0
   ) -> String {
+    if depth > MarkdownFormatting.maxContentDepth {
+      return MarkdownFormatting.contentTooDeep
+    }
+
     var markdown = ""
 
     for item in sections {
-      markdown += Self.renderContentItem(item, references: references)
+      markdown += Self.renderContentItem(item, references: references, depth: depth)
     }
 
     return markdown
@@ -178,7 +183,8 @@ public struct HIGRenderer: Sendable {
 
   private static func renderContentItem(
     _ item: ContentItem,
-    references: [String: HIGReferenceItem]
+    references: [String: HIGReferenceItem],
+    depth: Int
   ) -> String {
     var markdown = ""
 
@@ -190,7 +196,7 @@ public struct HIGRenderer: Sendable {
 
     case "paragraph":
       if let inlineContent = item.inlineContent {
-        let text = Self.renderHIGInlineContent(inlineContent, references: references)
+        let text = Self.renderHIGInlineContent(inlineContent, references: references, depth: 0)
         markdown += "\(text)\n\n"
       }
 
@@ -202,42 +208,30 @@ public struct HIGRenderer: Sendable {
         case .multiple(let arr): code = arr.joined(separator: "\n")
         }
       }
-      let syntax = item.syntax ?? "swift"
-      markdown += "```\(syntax)\n\(code)\n```\n\n"
+      markdown += MarkdownFormatting.formatCodeBlock(code, syntax: item.syntax)
 
-    case "unorderedList":
+    case "unorderedList", "orderedList":
       if let items = item.items {
-        for listItem in items {
-          let itemText = Self.renderHIGContent(
-            sections: listItem.content ?? [], references: references)
-          markdown +=
-            "- \(itemText.replacingOccurrences(of: "\\n\\n$", with: "", options: .regularExpression))\n"
-        }
-        markdown += "\n"
-      }
-
-    case "orderedList":
-      if let items = item.items {
-        for (index, listItem) in items.enumerated() {
-          let itemText = Self.renderHIGContent(
-            sections: listItem.content ?? [], references: references)
-          markdown +=
-            "\(index + 1). \(itemText.replacingOccurrences(of: "\\n\\n$", with: "", options: .regularExpression))\n"
-        }
-        markdown += "\n"
+        markdown += MarkdownFormatting.formatList(
+          items.map { listItem in
+            Self.renderHIGContent(
+              sections: listItem.content ?? [], references: references, depth: depth + 1)
+          },
+          ordered: item.type == "orderedList"
+        )
       }
 
     case "links":
       markdown += Self.renderHIGLinks(item, references: references)
 
     case "table":
-      markdown += Self.renderHIGTable(item, references: references)
+      markdown += Self.renderHIGTable(item, references: references, depth: depth)
 
     case "aside":
-      markdown += Self.renderHIGAside(item, references: references)
+      markdown += Self.renderHIGAside(item, references: references, depth: depth)
 
     case "row":
-      markdown += Self.renderHIGRow(item, references: references)
+      markdown += Self.renderHIGRow(item, references: references, depth: depth)
 
     case "video":
       markdown += Self.renderHIGVideo(item, references: references)
@@ -288,57 +282,43 @@ public struct HIGRenderer: Sendable {
 
   static func renderHIGTable(
     _ item: ContentItem,
-    references: [String: HIGReferenceItem]
+    references: [String: HIGReferenceItem],
+    depth: Int = 0
   ) -> String {
     guard let rows = item.rows, !rows.isEmpty else { return "" }
 
-    let firstRowIsHeader = item.header == "row"
-    var markdown = ""
-
-    for (rowIndex, row) in rows.enumerated() {
-      let cellTexts = row.map { cell -> String in
-        let text = Self.renderHIGContent(sections: cell, references: references)
-        return Self.escapeTableCell(text)
-      }
-      guard !cellTexts.isEmpty else { continue }
-      markdown += "| \(cellTexts.joined(separator: " | ")) |\n"
-      if firstRowIsHeader && rowIndex == 0 {
-        markdown += "| \(cellTexts.map { _ in "---" }.joined(separator: " | ")) |\n"
+    let renderedRows = rows.map { row in
+      row.map { cell in
+        Self.renderHIGContent(sections: cell, references: references, depth: depth + 1)
       }
     }
-
-    return markdown.isEmpty ? "" : "\(markdown)\n"
-  }
-
-  private static func escapeTableCell(_ text: String) -> String {
-    text.replacingOccurrences(of: "|", with: "\\|")
-      .replacingOccurrences(of: "\n", with: " ")
-      .trimmingCharacters(in: .whitespacesAndNewlines)
+    return MarkdownFormatting.formatTable(renderedRows, hasHeaderRow: item.header == "row")
   }
 
   // MARK: - Aside rendering
 
   static func renderHIGAside(
     _ item: ContentItem,
-    references: [String: HIGReferenceItem]
+    references: [String: HIGReferenceItem],
+    depth: Int = 0
   ) -> String {
     let rawType = (item.style ?? item.name ?? "note").lowercased()
-    let calloutType = Self.mapHIGAsideStyleToCallout(rawType)
     let asideContent =
       item.content != nil
-      ? Self.renderHIGContent(sections: item.content!, references: references)
+      ? Self.renderHIGContent(sections: item.content!, references: references, depth: depth + 1)
       : ""
-    let cleanContent = asideContent.trimmingCharacters(in: .whitespacesAndNewlines)
-      .replacingOccurrences(of: "\n", with: "\n> ")
-    if cleanContent.isEmpty { return "" }
-    return "> [!\(calloutType)]\n> \(cleanContent)\n\n"
+    return MarkdownFormatting.formatCallout(
+      type: MarkdownFormatting.mapAsideStyleToCallout(rawType),
+      content: asideContent
+    )
   }
 
   // MARK: - Row rendering
 
   static func renderHIGRow(
     _ item: ContentItem,
-    references: [String: HIGReferenceItem]
+    references: [String: HIGReferenceItem],
+    depth: Int = 0
   ) -> String {
     // HIG rows use "columns" in JSON, which maps to item.content in ContentItem.
     // Each column has its own content array.
@@ -347,7 +327,8 @@ public struct HIGRenderer: Sendable {
     var markdown = ""
     for column in columns {
       if let colContent = column.content, !colContent.isEmpty {
-        markdown += Self.renderHIGContent(sections: colContent, references: references)
+        markdown += Self.renderHIGContent(
+          sections: colContent, references: references, depth: depth + 1)
       }
     }
     return markdown
@@ -385,8 +366,13 @@ public struct HIGRenderer: Sendable {
 
   static func renderHIGInlineContent(
     _ inlineContent: [ContentItem],
-    references: [String: HIGReferenceItem]
+    references: [String: HIGReferenceItem],
+    depth: Int = 0
   ) -> String {
+    if depth > MarkdownFormatting.maxInlineDepth {
+      return MarkdownFormatting.inlineContentTooDeep
+    }
+
     var result = ""
     for item in inlineContent {
       switch item.type {
@@ -434,14 +420,16 @@ public struct HIGRenderer: Sendable {
       case "emphasis":
         let inner =
           item.inlineContent != nil
-          ? Self.renderHIGInlineContent(item.inlineContent!, references: references)
+          ? Self.renderHIGInlineContent(
+            item.inlineContent!, references: references, depth: depth + 1)
           : ""
         result += "*\(inner)*"
 
       case "strong":
         let inner =
           item.inlineContent != nil
-          ? Self.renderHIGInlineContent(item.inlineContent!, references: references)
+          ? Self.renderHIGInlineContent(
+            item.inlineContent!, references: references, depth: depth + 1)
           : ""
         result += "**\(inner)**"
 
@@ -520,17 +508,6 @@ public struct HIGRenderer: Sendable {
   }
 
   // MARK: - Helpers
-
-  private static func mapHIGAsideStyleToCallout(_ style: String) -> String {
-    switch style.lowercased() {
-    case "warning": return "WARNING"
-    case "important": return "IMPORTANT"
-    case "caution": return "CAUTION"
-    case "tip": return "TIP"
-    case "deprecated": return "WARNING"
-    default: return "NOTE"
-    }
-  }
 
   private static func extractTitleFromIdentifier(_ identifier: String) -> String {
     let parts = identifier.split(separator: "/")
