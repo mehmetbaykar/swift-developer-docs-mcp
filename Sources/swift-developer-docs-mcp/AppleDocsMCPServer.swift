@@ -9,7 +9,7 @@ struct AppleDocsMCPServer: Sendable {
 
   init(
     name: String = "swift-developer-docs-mcp",
-    version: String = "1.7.0",
+    version: String = "1.8.0",
     title: String = "Swift Apple Developer Docs MCP",
     instructions: String =
       "Search and fetch Apple Developer documentation, Human Interface Guidelines, WWDC video transcripts, and external Swift-DocC content as AI-friendly Markdown. The conformance conditions in Apple's data, such as \"Conforms when `Element` conforms to `Hashable`.\", can be missing or wrong. When a condition matters, read the declaration in the module's `.swiftinterface` file in the SDK."
