@@ -106,9 +106,9 @@ struct SmokeTests {
       SmokeTests.fixtureData,
       sourceURL: "https://developer.apple.com/documentation/swift/array"
     )
-    #expect(result.contains("[randomElement()]"))
-    #expect(result.contains("[isEmpty]"))
-    #expect(result.contains("[firstIndex"))
+    #expect(result.contains("[`randomElement()`]"))
+    #expect(result.contains("[`isEmpty`]"))
+    #expect(result.contains("[`firstIndex"))
   }
 
   @Test("Preserves method signatures with parentheses")
@@ -117,12 +117,16 @@ struct SmokeTests {
       SmokeTests.fixtureData,
       sourceURL: "https://developer.apple.com/documentation/swift/array"
     )
-    #expect(result.contains("[init()]"))
-    #expect(result.contains("[append(_:)]"))
-    #expect(result.contains("[insert(_:at:)]"))
-    #expect(result.contains("[remove(at:)]"))
-    #expect(!result.contains("[init ()]"))
-    #expect(!result.contains("[append (_:)]"))
+    #expect(result.contains("[`init()`]"))
+    #expect(result.contains("[`append(_:)`]"))
+    #expect(result.contains("[`insert(_:at:)`]"))
+    #expect(result.contains("[`remove(at:)`]"))
+    #expect(!result.contains("[`init ()`]"))
+    #expect(!result.contains("[`append (_:)`]"))
+    #expect(
+      result.contains(
+        "[`Decodable`](/documentation/swift/decodable) Conforms when `Element` conforms to `Decodable`."
+      ))
   }
 
   @Test("Generates valid markdown structure")

@@ -140,5 +140,78 @@ struct ExternalRendererTests {
       #expect(result.contains("# Minimal External Type"))
       #expect(result.contains("source: https://docs.example.com/documentation/Lib/Minimal"))
     }
+
+    @Test("Uses the same link titles, abstracts, and conditions as Apple pages")
+    func sharedLinkTitlesAbstractsAndConditions() {
+      let elementID = "doc://com.example.TestLib/documentation/TestLib/Element"
+      let memberID = "doc://com.example.TestLib/documentation/TestLib/ExampleType/hash(into:)"
+      let condition = ConformanceInfo(
+        constraints: [
+          ContentItem(type: "codeVoice", code: .single("Value")),
+          ContentItem(text: " conforms to ", type: "text"),
+          ContentItem(type: "codeVoice", code: .single("Hashable")),
+          ContentItem(text: ".", type: "text"),
+        ],
+        conformancePrefix: [ContentItem(text: "Conforms when", type: "text")],
+        availabilityPrefix: [ContentItem(text: "Available when", type: "text")]
+      )
+      let jsonData = AppleDocJSON(
+        metadata: DocumentationMetadata(title: "ExampleType"),
+        abstract: [
+          ContentItem(text: "A ", type: "text"),
+          ContentItem(type: "codeVoice", code: .single("Collection")),
+          ContentItem(text: " of ", type: "text"),
+          ContentItem(type: "reference", identifier: elementID),
+          ContentItem(text: " values.", type: "text"),
+        ],
+        topicSections: [
+          TopicSection(title: "Hashing", identifiers: [memberID])
+        ],
+        seeAlsoSections: [
+          SeeAlsoSection(title: "Related", identifiers: [elementID])
+        ],
+        relationshipsSections: [
+          ContentItem(title: "Conforms To", identifiers: [elementID])
+        ],
+        references: [
+          elementID: ContentItem(
+            title: "Element",
+            url: "/documentation/TestLib/Element",
+            role: "symbol",
+            conformance: condition
+          ),
+          memberID: ContentItem(
+            title: "hash(into:)",
+            url: "/documentation/TestLib/ExampleType/hash(into:)",
+            abstract: [
+              ContentItem(text: "The ", type: "text"),
+              ContentItem(type: "codeVoice", code: .single("Element")),
+              ContentItem(text: " hash.", type: "text"),
+            ],
+            role: "symbol",
+            conformance: condition
+          ),
+        ]
+      )
+      let sourceUrl = URL(string: "https://example.com/documentation/TestLib/ExampleType")!
+      let result = ExternalRenderer.renderExternalDocumentation(
+        jsonData: jsonData, sourceUrl: sourceUrl)
+      let elementURL = "/external/https://example.com/documentation/TestLib/Element"
+      let memberURL = "/external/https://example.com/documentation/TestLib/ExampleType/hash(into:)"
+
+      #expect(
+        result.contains("> A `Collection` of [`Element`](\(elementURL)) values."))
+      #expect(result.contains("description: A Collection of Element values.\n"))
+      #expect(
+        result.contains(
+          "- [`hash(into:)`](\(memberURL)) The `Element` hash. Available when `Value` conforms to `Hashable`."
+        ))
+      #expect(
+        result.contains(
+          "- [`Element`](\(elementURL)) Conforms when `Value` conforms to `Hashable`."))
+      #expect(
+        result.contains(
+          "- [`Element`](\(elementURL)) Available when `Value` conforms to `Hashable`."))
+    }
   }
 }

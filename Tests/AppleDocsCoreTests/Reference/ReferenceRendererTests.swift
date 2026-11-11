@@ -18,25 +18,13 @@ struct RendererTests {
       #expect(!result.contains("title: SwiftUI View | Apple Developer Documentation"))
     }
 
-    @Test("Uses interfaceLanguages title as fallback")
-    func fallbackTitle() {
-      let data = AppleDocJSON(
-        interfaceLanguages: InterfaceLanguages(swift: [
-          SwiftInterfaceItem(
-            path: nil, title: "Interface Title", type: nil, children: nil, external: nil, beta: nil)
-        ])
-      )
-      let result = DocumentRenderer.renderFromJSON(data, sourceURL: "https://test.com")
-      #expect(result.contains("title: Interface Title"))
-    }
-
     @Test("Includes description from abstract")
     func descriptionFromAbstract() {
       let data = AppleDocJSON(
         metadata: DocumentationMetadata(title: "Test Title"),
         abstract: [
-          TextFragment(text: "This is the abstract description.", type: "text"),
-          TextFragment(text: " Additional text.", type: "text"),
+          ContentItem(text: "This is the abstract description.", type: "text"),
+          ContentItem(text: " Additional text.", type: "text"),
         ]
       )
       let result = DocumentRenderer.renderFromJSON(data, sourceURL: "https://test.com")
@@ -268,7 +256,7 @@ struct RendererTests {
       let data = AppleDocJSON(
         metadata: DocumentationMetadata(title: "legacy()"),
         identifier: DocumentationIdentifier(url: symbolID, interfaceLanguage: nil),
-        abstract: [TextFragment(text: "A legacy API.", type: "text")],
+        abstract: [ContentItem(text: "A legacy API.", type: "text")],
         deprecationSummary: [
           ContentItem(
             type: "paragraph",
@@ -305,7 +293,7 @@ struct RendererTests {
               deprecatedAt: "8.0",
               message: "Use modernMethod() instead.")
           ]),
-        abstract: [TextFragment(text: "A legacy API.", type: "text")]
+        abstract: [ContentItem(text: "A legacy API.", type: "text")]
       )
 
       let result = DocumentRenderer.renderFromJSON(data, sourceURL: "https://test.com")
@@ -668,7 +656,7 @@ struct RendererTests {
     func circularRefs() {
       let data = AppleDocJSON(
         metadata: DocumentationMetadata(title: "Test Circular Reference", roleHeading: "Type"),
-        abstract: [TextFragment(text: "A test type with circular references", type: "text")],
+        abstract: [ContentItem(text: "A test type with circular references", type: "text")],
         primaryContentSections: [
           PrimaryContentSection(
             kind: "content",
@@ -699,10 +687,10 @@ struct RendererTests {
         references: [
           "doc://test/ref1": ContentItem(
             title: "Reference 1", url: "/test/ref1",
-            abstract: [TextFragment(text: "This references ref2", type: "text")]),
+            abstract: [ContentItem(text: "This references ref2", type: "text")]),
           "doc://test/ref2": ContentItem(
             title: "Reference 2", url: "/test/ref2",
-            abstract: [TextFragment(text: "This references ref1", type: "text")]),
+            abstract: [ContentItem(text: "This references ref1", type: "text")]),
         ]
       )
       let result = DocumentRenderer.renderFromJSON(data, sourceURL: "https://test.com")
@@ -771,6 +759,457 @@ struct RendererTests {
       )
       let result = DocumentRenderer.renderFromJSON(data, sourceURL: "https://test.com")
       #expect(result.contains("nested text"))
+    }
+  }
+
+  @Suite("Abstract rendering")
+  struct AbstractRendering {
+    private static let references: [String: ContentItem] = [
+      "doc://com.apple.SwiftData/documentation/SwiftData/ResultsSection": ContentItem(
+        title: "ResultsSection",
+        url: "/documentation/swiftdata/resultssection",
+        kind: "symbol"
+      ),
+      "doc://com.apple.SwiftData/documentation/SwiftData/SectionedResults/sections": ContentItem(
+        title: "sections",
+        url: "/documentation/swiftdata/sectionedresults/sections",
+        abstract: [
+          ContentItem(text: "The ", type: "text"),
+          ContentItem(type: "codeVoice", code: .single("ResultsSection")),
+          ContentItem(text: " values.", type: "text"),
+        ],
+        kind: "symbol"
+      ),
+    ]
+
+    private static let abstract: [ContentItem] = [
+      ContentItem(text: "A ", type: "text"),
+      ContentItem(type: "codeVoice", code: .single("RandomAccessCollection")),
+      ContentItem(text: " of ", type: "text"),
+      ContentItem(
+        type: "reference",
+        identifier: "doc://com.apple.SwiftData/documentation/SwiftData/ResultsSection"),
+      ContentItem(text: " instances.", type: "text"),
+    ]
+
+    @Test("Keeps code spans and references in the abstract")
+    func abstractCodeAndReferences() {
+      let data = AppleDocJSON(
+        metadata: DocumentationMetadata(title: "SectionedResults"),
+        abstract: Self.abstract,
+        references: Self.references
+      )
+      let result = DocumentRenderer.renderFromJSON(
+        data, sourceURL: "https://developer.apple.com/documentation/swiftdata/sectionedresults")
+      #expect(
+        result.contains(
+          "> A `RandomAccessCollection` of [ResultsSection](/documentation/swiftdata/resultssection) instances."
+        ))
+    }
+
+    @Test("Keeps code and reference titles as plain text in the description")
+    func plainDescription() {
+      let data = AppleDocJSON(
+        metadata: DocumentationMetadata(title: "SectionedResults"),
+        abstract: Self.abstract,
+        references: Self.references
+      )
+      let result = DocumentRenderer.renderFromJSON(
+        data, sourceURL: "https://developer.apple.com/documentation/swiftdata/sectionedresults")
+      #expect(
+        result.contains("description: A RandomAccessCollection of ResultsSection instances.\n"))
+    }
+
+    @Test("Keeps code spans in topic abstracts")
+    func topicAbstractCodeSpans() {
+      let data = AppleDocJSON(
+        metadata: DocumentationMetadata(title: "SectionedResults"),
+        topicSections: [
+          TopicSection(
+            title: "Instance Properties",
+            identifiers: [
+              "doc://com.apple.SwiftData/documentation/SwiftData/SectionedResults/sections"
+            ])
+        ],
+        references: Self.references
+      )
+      let result = DocumentRenderer.renderFromJSON(
+        data, sourceURL: "https://developer.apple.com/documentation/swiftdata/sectionedresults")
+      #expect(
+        result.contains(
+          "- [sections](/documentation/swiftdata/sectionedresults/sections) The `ResultsSection` values."
+        ))
+    }
+  }
+
+  @Suite("Platform availability")
+  struct PlatformWithoutVersion {
+    @Test("Shows a platform without a version by its name only")
+    func nameOnly() throws {
+      let json = """
+        {
+          "metadata": {
+            "title": "autocorrectionType",
+            "platforms": [
+              {"name": "iOS", "introducedAt": "2.0"},
+              {"name": "visionOS", "beta": true},
+              {"name": "tvOS"}
+            ]
+          }
+        }
+        """.data(using: .utf8)!
+      let data = try JSONDecoder().decode(AppleDocJSON.self, from: json)
+      #expect(data.metadata?.platforms?[1].introducedAt == nil)
+      #expect(data.metadata?.platforms?[2].introducedAt == nil)
+      let result = DocumentRenderer.renderFromJSON(
+        data,
+        sourceURL:
+          "https://developer.apple.com/documentation/uikit/uitextinputtraits/autocorrectiontype"
+      )
+      #expect(result.contains("**Available on:** iOS 2.0+, visionOS Beta, tvOS\n"))
+      #expect(!result.contains("undefined"))
+    }
+  }
+
+  @Suite("Objective-C pages")
+  struct ObjectiveCPages {
+    private static let swiftVariant = Variant.language(
+      LanguageVariant(
+        traits: [LanguageTrait(interfaceLanguage: "swift")],
+        paths: ["/documentation/foundation/datecomponents"]
+      )
+    )
+    private static let objcVariant = Variant.language(
+      LanguageVariant(
+        traits: [LanguageTrait(interfaceLanguage: "occ")],
+        paths: ["/documentation/foundation/nsdatecomponents"]
+      )
+    )
+
+    @Test("Links the Swift version of an Objective-C page")
+    func linksSwiftVersion() {
+      let data = AppleDocJSON(
+        metadata: DocumentationMetadata(title: "NSDateComponents"),
+        identifier: DocumentationIdentifier(
+          url: "doc://com.apple.foundation/documentation/Foundation/NSDateComponents",
+          interfaceLanguage: "occ"
+        ),
+        variants: [Self.swiftVariant, Self.objcVariant]
+      )
+      let result = DocumentRenderer.renderFromJSON(
+        data, sourceURL: "https://developer.apple.com/documentation/foundation/nsdatecomponents")
+      #expect(
+        result.contains(
+          "> [!NOTE]\n> This page documents the Objective-C API. For the Swift API, see [/documentation/foundation/datecomponents](/documentation/foundation/datecomponents)."
+        ))
+    }
+
+    @Test("Says when an Objective-C page has no Swift version")
+    func noSwiftVersion() {
+      let data = AppleDocJSON(
+        metadata: DocumentationMetadata(title: "era"),
+        identifier: DocumentationIdentifier(
+          url: "doc://com.apple.foundation/documentation/Foundation/NSDateComponents/era",
+          interfaceLanguage: "occ"
+        ),
+        variants: [Self.objcVariant]
+      )
+      let result = DocumentRenderer.renderFromJSON(
+        data, sourceURL: "https://developer.apple.com/documentation/foundation/nsdatecomponents/era"
+      )
+      #expect(
+        result.contains(
+          "> This page documents the Objective-C API. Apple's documentation doesn't link a Swift version of this symbol"
+        ))
+    }
+
+    @Test("Does not add a note to a Swift page")
+    func swiftPage() {
+      let data = AppleDocJSON(
+        metadata: DocumentationMetadata(title: "DateComponents"),
+        identifier: DocumentationIdentifier(
+          url: "doc://com.apple.foundation/documentation/Foundation/DateComponents",
+          interfaceLanguage: "swift"
+        ),
+        variants: [Self.swiftVariant, Self.objcVariant]
+      )
+      let result = DocumentRenderer.renderFromJSON(
+        data, sourceURL: "https://developer.apple.com/documentation/foundation/datecomponents")
+      #expect(!result.contains("Objective-C"))
+    }
+  }
+
+  @Suite("Reference link titles")
+  struct ReferenceLinkTitles {
+    @Test("Uses the reference title for inline links without an inline title")
+    func referenceTitle() {
+      let url = "https://github.com/apple/foundation-models-utilities"
+      let data = AppleDocJSON(
+        metadata: DocumentationMetadata(title: "Workaround Test"),
+        primaryContentSections: [
+          PrimaryContentSection(
+            kind: "content",
+            content: [
+              ContentItem(
+                type: "paragraph",
+                inlineContent: [
+                  ContentItem(text: "Import the ", type: "text"),
+                  ContentItem(type: "reference", identifier: url),
+                  ContentItem(text: " package.", type: "text"),
+                ])
+            ])
+        ],
+        references: [
+          url: ContentItem(type: "link", title: "Foundation Models framework utilities", url: url)
+        ]
+      )
+      let result = DocumentRenderer.renderFromJSON(data, sourceURL: "https://test.com")
+      #expect(result.contains("[Foundation Models framework utilities](\(url))"))
+      #expect(!result.contains("[foundation-models]"))
+    }
+
+    @Test("Preserves code spans in inline link text via titleInlineContent")
+    func titleInlineContent() {
+      let url =
+        "https://developer.apple.com/documentation/storekit/transaction/revocationtype-swift.property"
+      let data = AppleDocJSON(
+        metadata: DocumentationMetadata(title: "Release Notes"),
+        primaryContentSections: [
+          PrimaryContentSection(
+            kind: "content",
+            content: [
+              ContentItem(
+                type: "paragraph",
+                inlineContent: [
+                  ContentItem(text: "New fields ", type: "text"),
+                  ContentItem(type: "reference", identifier: url),
+                  ContentItem(text: " have been added.", type: "text"),
+                ])
+            ])
+        ],
+        references: [
+          url: ContentItem(
+            type: "link",
+            title: "revocationType",
+            titleInlineContent: [ContentItem(type: "codeVoice", code: .single("revocationType"))],
+            url: url
+          )
+        ]
+      )
+      let result = DocumentRenderer.renderFromJSON(data, sourceURL: "https://test.com")
+      #expect(result.contains("[`revocationType`](\(url))"))
+    }
+
+    @Test("Backticks inline symbol links that lack titleInlineContent")
+    func symbolWithoutRichTitle() {
+      let id =
+        "doc://com.apple.documentation/documentation/Metal/MTLAccelerationStructure/gpuResourceID"
+      let url = "/documentation/Metal/MTLAccelerationStructure/gpuResourceID"
+      let data = AppleDocJSON(
+        metadata: DocumentationMetadata(title: "Release Notes"),
+        primaryContentSections: [
+          PrimaryContentSection(
+            kind: "content",
+            content: [
+              ContentItem(
+                type: "paragraph",
+                inlineContent: [
+                  ContentItem(text: "Use ", type: "text"),
+                  ContentItem(type: "reference", identifier: id),
+                  ContentItem(text: " instead.", type: "text"),
+                ])
+            ])
+        ],
+        references: [
+          id: ContentItem(
+            type: "topic", title: "gpuResourceID", identifier: id, url: url, role: "symbol",
+            kind: "symbol")
+        ]
+      )
+      let result = DocumentRenderer.renderFromJSON(data, sourceURL: "https://test.com")
+      #expect(result.contains("[`gpuResourceID`](\(url))"))
+    }
+
+    @Test("Does not backtick collection references")
+    func collectionReference() {
+      let id = "doc://com.apple.documentation/documentation/StoreKit"
+      let url = "/documentation/StoreKit"
+      let data = AppleDocJSON(
+        metadata: DocumentationMetadata(title: "Release Notes"),
+        primaryContentSections: [
+          PrimaryContentSection(
+            kind: "content",
+            content: [
+              ContentItem(
+                type: "paragraph",
+                inlineContent: [
+                  ContentItem(text: "See ", type: "text"),
+                  ContentItem(type: "reference", identifier: id),
+                  ContentItem(text: ".", type: "text"),
+                ])
+            ])
+        ],
+        references: [
+          id: ContentItem(
+            type: "topic", title: "StoreKit", identifier: id, url: url, role: "collection",
+            kind: "symbol")
+        ]
+      )
+      let result = DocumentRenderer.renderFromJSON(data, sourceURL: "https://test.com")
+      #expect(result.contains("[StoreKit](\(url))"))
+      #expect(!result.contains("[`StoreKit`]"))
+    }
+
+    @Test("Backticks symbol links in topic sections")
+    func topicSymbolLinks() {
+      let id = "doc://test/HStack"
+      let url = "/documentation/SwiftUI/HStack"
+      let data = AppleDocJSON(
+        metadata: DocumentationMetadata(title: "SwiftUI"),
+        topicSections: [TopicSection(title: "Containers", identifiers: [id])],
+        references: [
+          id: ContentItem(
+            type: "topic", title: "HStack", identifier: id, url: url, role: "symbol",
+            kind: "symbol")
+        ]
+      )
+      let result = DocumentRenderer.renderFromJSON(data, sourceURL: "https://test.com")
+      #expect(result.contains("- [`HStack`](\(url))"))
+    }
+  }
+
+  @Suite("Topic Sections")
+  struct UntitledTopicSections {
+    @Test("Renders topic sections that have no title")
+    func missingTitle() throws {
+      let json = """
+        {
+          "metadata": {"title": "Migration Guide"},
+          "topicSections": [
+            {"identifiers": ["doc://test/DataRaceSafety", "doc://test/MigrationStrategy"]},
+            {"title": "Swift Concurrency in Depth", "identifiers": ["doc://test/RuntimeBehavior"]}
+          ]
+        }
+        """.data(using: .utf8)!
+      let data = try JSONDecoder().decode(AppleDocJSON.self, from: json)
+      let result = DocumentRenderer.renderFromJSON(data, sourceURL: "https://test.com")
+      #expect(result.contains("[Data Race Safety]"))
+      #expect(result.contains("[Migration Strategy]"))
+      #expect(result.contains("## Swift Concurrency in Depth"))
+      #expect(result.contains("[Runtime Behavior]"))
+    }
+  }
+
+  @Suite("Relationships")
+  struct ConditionalRelationships {
+    private static func hashableCondition() -> ConformanceInfo {
+      ConformanceInfo(
+        constraints: [
+          ContentItem(type: "codeVoice", code: .single("Element")),
+          ContentItem(text: " conforms to ", type: "text"),
+          ContentItem(type: "codeVoice", code: .single("Hashable")),
+          ContentItem(text: ".", type: "text"),
+        ],
+        conformancePrefix: [ContentItem(text: "Conforms when", type: "text")],
+        availabilityPrefix: [ContentItem(text: "Available when", type: "text")]
+      )
+    }
+
+    @Test("Renders the conditions of a conditional conformance")
+    func conditionalConformance() {
+      let data = AppleDocJSON(
+        metadata: DocumentationMetadata(title: "LanguageModelSession.SessionProperty"),
+        relationshipsSections: [
+          ContentItem(
+            type: "conformsTo", title: "Conforms To",
+            identifiers: ["doc://test/Sendable", "doc://test/SendableMetatype"],
+            kind: "relationships")
+        ],
+        references: [
+          "doc://test/Sendable": ContentItem(
+            type: "topic",
+            title: "Sendable",
+            url: "/documentation/swift/sendable",
+            role: "symbol",
+            conformance: ConformanceInfo(
+              constraints: [
+                ContentItem(type: "codeVoice", code: .single("Value")),
+                ContentItem(text: " conforms to ", type: "text"),
+                ContentItem(type: "codeVoice", code: .single("Sendable")),
+                ContentItem(text: ".", type: "text"),
+              ],
+              conformancePrefix: [ContentItem(text: "Conforms when", type: "text")],
+              availabilityPrefix: [ContentItem(text: "Available when", type: "text")]
+            )
+          ),
+          "doc://test/SendableMetatype": ContentItem(
+            type: "topic",
+            title: "SendableMetatype",
+            url: "/documentation/swift/sendablemetatype",
+            role: "symbol"
+          ),
+        ]
+      )
+      let result = DocumentRenderer.renderFromJSON(data, sourceURL: "https://test.com")
+      #expect(
+        result.contains(
+          "- [`Sendable`](/documentation/swift/sendable) Conforms when `Value` conforms to `Sendable`.\n"
+        ))
+      #expect(
+        result.contains("- [`SendableMetatype`](/documentation/swift/sendablemetatype)\n"))
+    }
+
+    @Test("Renders the conditions of conditionally available members")
+    func conditionalMembers() {
+      let condition = Self.hashableCondition()
+      let data = AppleDocJSON(
+        metadata: DocumentationMetadata(title: "Array"),
+        topicSections: [
+          TopicSection(
+            title: "Hashing", identifiers: ["doc://test/hash(into:)", "doc://test/count"])
+        ],
+        seeAlsoSections: [
+          SeeAlsoSection(title: "Related", identifiers: ["doc://test/hashValue"])
+        ],
+        references: [
+          "doc://test/hash(into:)": ContentItem(
+            type: "topic",
+            title: "hash(into:)",
+            url: "/documentation/swift/array/hash(into:)",
+            abstract: [
+              ContentItem(text: "Hashes the essential components of this value.", type: "text")
+            ],
+            role: "symbol",
+            conformance: condition
+          ),
+          "doc://test/count": ContentItem(
+            type: "topic",
+            title: "count",
+            url: "/documentation/swift/array/count",
+            abstract: [ContentItem(text: "The number of elements in the array.", type: "text")],
+            role: "symbol"
+          ),
+          "doc://test/hashValue": ContentItem(
+            type: "topic",
+            title: "hashValue",
+            url: "/documentation/swift/array/hashvalue",
+            role: "symbol",
+            conformance: condition
+          ),
+        ]
+      )
+      let result = DocumentRenderer.renderFromJSON(data, sourceURL: "https://test.com")
+      #expect(
+        result.contains(
+          "- [`hash(into:)`](/documentation/swift/array/hash(into:)) Hashes the essential components of this value. Available when `Element` conforms to `Hashable`.\n"
+        ))
+      #expect(
+        result.contains(
+          "- [`count`](/documentation/swift/array/count) The number of elements in the array.\n"))
+      #expect(
+        result.contains(
+          "- [`hashValue`](/documentation/swift/array/hashvalue) Available when `Element` conforms to `Hashable`.\n"
+        ))
     }
   }
 }

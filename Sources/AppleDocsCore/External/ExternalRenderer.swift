@@ -50,22 +50,16 @@ public enum ExternalRenderer: Sendable {
     }
 
     if let platforms = jsonData.metadata?.platforms, !platforms.isEmpty {
-      let platformText = platforms.map { p in
-        "\(p.name) \(p.introducedAt)+\(p.beta == true ? " Beta" : "")"
-      }.joined(separator: ", ")
-      markdown += "**Available on:** \(platformText)\n\n"
+      markdown += "**Available on:** \(ContentRenderer.formatPlatforms(platforms))\n\n"
     }
 
-    if let abstract = jsonData.abstract {
-      let abstractText =
-        abstract
-        .filter { $0.type == "text" }
-        .compactMap { $0.text }
-        .joined()
-      if !abstractText.trimmingCharacters(in: .whitespaces).isEmpty {
-        markdown += "> \(abstractText)\n\n"
-      }
-    }
+    markdown += ContentRenderer.renderAbstractQuote(
+      jsonData.abstract, references: jsonData.references, externalOrigin: externalOriginOpt)
+
+    markdown += ContentRenderer.renderLanguageNotice(
+      jsonData, externalOrigin: externalOriginOpt)
+    markdown += ReferenceRenderer.renderDeprecationNotice(
+      jsonData, references: jsonData.references, externalOrigin: externalOriginOpt)
 
     if let primarySections = jsonData.primaryContentSections {
       let declarationSection = primarySections.first { $0.kind == "declarations" }
@@ -101,21 +95,13 @@ public enum ExternalRenderer: Sendable {
     }
 
     if let topics = jsonData.topicSections {
-      markdown += renderTopicSectionsExternal(
+      markdown += ContentRenderer.renderTopicSections(
         topics, variants: jsonData.variants, refs: jsonData.references,
         externalOrigin: externalOriginOpt)
     }
 
-    if let swiftItems = jsonData.interfaceLanguages?.swift,
-      let first = swiftItems.first,
-      let children = first.children
-    {
-      let indexItems = children.map { swiftItemToIndexItem($0) }
-      markdown += renderIndexContentExternal(indexItems, externalOrigin: externalOriginOpt)
-    }
-
     if let seeAlso = jsonData.seeAlsoSections {
-      markdown += renderSeeAlsoExternal(
+      markdown += ContentRenderer.renderSeeAlso(
         seeAlso, variants: jsonData.variants, refs: jsonData.references,
         externalOrigin: externalOriginOpt)
     }
@@ -139,17 +125,11 @@ public enum ExternalRenderer: Sendable {
       let cleanTitle = title.replacingOccurrences(of: "| Apple Developer Documentation", with: "")
         .trimmingCharacters(in: .whitespaces)
       lines.append("title: \(cleanTitle)")
-    } else if let swiftTitle = data.interfaceLanguages?.swift?.first?.title {
-      lines.append("title: \(swiftTitle)")
     }
 
     if let abstract = data.abstract {
-      let description =
-        abstract
-        .filter { $0.type == "text" }
-        .compactMap { $0.text }
-        .joined()
-        .trimmingCharacters(in: .whitespaces)
+      let description = ContentRenderer.renderPlainText(abstract, references: data.references)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
       if !description.isEmpty {
         lines.append("description: \(description)")
       }
@@ -160,6 +140,10 @@ public enum ExternalRenderer: Sendable {
     let formatter = ISO8601DateFormatter()
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     lines.append("timestamp: \(formatter.string(from: Date()))")
+
+    if ReferenceRenderer.isSymbolDeprecated(data) {
+      lines.append("deprecated: true")
+    }
 
     return "---\n\(lines.joined(separator: "\n"))\n---\n\n"
   }
@@ -205,109 +189,6 @@ public enum ExternalRenderer: Sendable {
           content, references: references, depth: 0, externalOrigin: externalOrigin)
         markdown += "\(paramText)\n\n"
       }
-    }
-    return markdown
-  }
-
-  static func swiftItemToIndexItem(_ item: SwiftInterfaceItem) -> IndexContentItem {
-    IndexContentItem(
-      type: item.type,
-      title: item.title,
-      path: item.path,
-      beta: item.beta,
-      children: item.children?.map { swiftItemToIndexItem($0) }
-    )
-  }
-
-  static func renderIndexContentExternal(_ children: [IndexContentItem], externalOrigin: String?)
-    -> String
-  {
-    renderIndexContentExternalWithIndent(children, headingLevel: 2, externalOrigin: externalOrigin)
-  }
-
-  static func renderIndexContentExternalWithIndent(
-    _ children: [IndexContentItem], headingLevel: Int, externalOrigin: String?
-  ) -> String {
-    var markdown = ""
-    for (i, child) in children.enumerated() {
-      if child.type == "groupMarker" {
-        if i > 0 { markdown += "\n" }
-        let hashes = String(repeating: "#", count: min(headingLevel, 6))
-        markdown += "\(hashes) \(child.title ?? "")\n\n"
-      } else if let path = child.path, let title = child.title {
-        let beta = child.beta == true ? " **Beta**" : ""
-        let rewritten = ContentRenderer.rewriteDocumentationPath(
-          path, externalOrigin: externalOrigin)
-        markdown += "- [\(title)](\(rewritten))\(beta)\n"
-        if let nestedChildren = child.children {
-          markdown += "\n"
-          markdown += renderIndexContentExternalWithIndent(
-            nestedChildren, headingLevel: headingLevel + 1, externalOrigin: externalOrigin)
-        }
-      }
-    }
-    return markdown
-  }
-
-  static func renderTopicSectionsExternal(
-    _ topics: [TopicSection], variants: [Variant]?, refs: [String: ContentItem]?,
-    externalOrigin: String?
-  ) -> String {
-    var markdown = ""
-    for topic in topics {
-      guard !topic.title.isEmpty else { continue }
-      markdown += "## \(topic.title)\n\n"
-      if let identifiers = topic.identifiers {
-        for id in identifiers {
-          let info = variants?.first { $0.identifier == id }
-          let reference = refs?[id]
-          if info != nil || reference != nil {
-            let displayTitle =
-              info?.title ?? reference?.title ?? ContentRenderer.extractTitleFromIdentifier(id)
-            let url = ContentRenderer.convertIdentifierToURL(
-              id, references: refs, externalOrigin: externalOrigin)
-            var abstractText = ""
-            if let infoAbstract = info?.abstract {
-              abstractText = infoAbstract.compactMap { $0.text }.joined()
-            } else if let refAbstract = reference?.abstract {
-              abstractText = refAbstract.compactMap { $0.text }.joined()
-            }
-            markdown += "- [\(displayTitle)](\(url))"
-            if !abstractText.isEmpty {
-              markdown += " \(abstractText)"
-            }
-            markdown += "\n"
-          } else {
-            let displayTitle = ContentRenderer.extractTitleFromIdentifier(id)
-            let url = ContentRenderer.convertIdentifierToURL(
-              id, references: refs, externalOrigin: externalOrigin)
-            markdown += "- [\(displayTitle)](\(url))\n"
-          }
-        }
-        markdown += "\n"
-      }
-    }
-    return markdown
-  }
-
-  static func renderSeeAlsoExternal(
-    _ sections: [SeeAlsoSection], variants: [Variant]?, refs: [String: ContentItem]?,
-    externalOrigin: String?
-  ) -> String {
-    var markdown = ""
-    for section in sections {
-      guard let identifiers = section.identifiers, !section.title.isEmpty else { continue }
-      markdown += "## \(section.title)\n\n"
-      for id in identifiers {
-        let info = variants?.first { $0.identifier == id }
-        let reference = refs?[id]
-        let displayTitle =
-          info?.title ?? reference?.title ?? ContentRenderer.extractTitleFromIdentifier(id)
-        let url = ContentRenderer.convertIdentifierToURL(
-          id, references: refs, externalOrigin: externalOrigin)
-        markdown += "- [\(displayTitle)](\(url))\n"
-      }
-      markdown += "\n"
     }
     return markdown
   }

@@ -52,6 +52,7 @@ public struct ContentItem: Codable, Sendable {
   public let text: String?
   public let type: String?
   public let title: String?
+  public let titleInlineContent: [ContentItem]?
   public let name: String?
   public let tokens: [Token]?
   public let content: [ContentItem]?
@@ -66,7 +67,7 @@ public struct ContentItem: Codable, Sendable {
   public let identifier: String?
   public let identifiers: [String]?
   public let url: String?
-  public let abstract: [TextFragment]?
+  public let abstract: [ContentItem]?
   public let role: String?
   public let kind: String?
   public let fragments: [FragmentItem]?
@@ -84,12 +85,13 @@ public struct ContentItem: Codable, Sendable {
   public let deprecated: Bool?
 
   public init(
-    text: String? = nil, type: String? = nil, title: String? = nil, name: String? = nil,
+    text: String? = nil, type: String? = nil, title: String? = nil,
+    titleInlineContent: [ContentItem]? = nil, name: String? = nil,
     tokens: [Token]? = nil, content: [ContentItem]? = nil, inlineContent: [ContentItem]? = nil,
     items: [ContentItem]? = nil, itemIdentifiers: [String]? = nil, code: CodeValue? = nil,
     syntax: String? = nil,
     level: Int? = nil, style: String? = nil, identifier: String? = nil,
-    identifiers: [String]? = nil, url: String? = nil, abstract: [TextFragment]? = nil,
+    identifiers: [String]? = nil, url: String? = nil, abstract: [ContentItem]? = nil,
     role: String? = nil, kind: String? = nil, fragments: [FragmentItem]? = nil,
     conformance: ConformanceInfo? = nil, header: String? = nil,
     rows: [[[ContentItem]]]? = nil, alt: String? = nil,
@@ -100,6 +102,7 @@ public struct ContentItem: Codable, Sendable {
     self.text = text
     self.type = type
     self.title = title
+    self.titleInlineContent = titleInlineContent
     self.name = name
     self.tokens = tokens
     self.content = content
@@ -133,6 +136,7 @@ public struct ContentItem: Codable, Sendable {
     case text
     case type
     case title
+    case titleInlineContent
     case name
     case tokens
     case content
@@ -167,6 +171,8 @@ public struct ContentItem: Codable, Sendable {
     self.text = try container.decodeIfPresent(String.self, forKey: .text)
     self.type = try container.decodeIfPresent(String.self, forKey: .type)
     self.title = try container.decodeIfPresent(String.self, forKey: .title)
+    self.titleInlineContent = try container.decodeIfPresent(
+      [ContentItem].self, forKey: .titleInlineContent)
     self.name = try container.decodeIfPresent(String.self, forKey: .name)
     self.tokens = try container.decodeIfPresent([Token].self, forKey: .tokens)
     self.content = try container.decodeIfPresent([ContentItem].self, forKey: .content)
@@ -191,7 +197,7 @@ public struct ContentItem: Codable, Sendable {
     self.identifier = try container.decodeIfPresent(String.self, forKey: .identifier)
     self.identifiers = try container.decodeIfPresent([String].self, forKey: .identifiers)
     self.url = try container.decodeIfPresent(String.self, forKey: .url)
-    self.abstract = try container.decodeIfPresent([TextFragment].self, forKey: .abstract)
+    self.abstract = try container.decodeIfPresent([ContentItem].self, forKey: .abstract)
     self.role = try container.decodeIfPresent(String.self, forKey: .role)
     self.kind = try container.decodeIfPresent(String.self, forKey: .kind)
     self.fragments = try container.decodeIfPresent([FragmentItem].self, forKey: .fragments)
@@ -212,6 +218,7 @@ public struct ContentItem: Codable, Sendable {
     try container.encodeIfPresent(text, forKey: .text)
     try container.encodeIfPresent(type, forKey: .type)
     try container.encodeIfPresent(title, forKey: .title)
+    try container.encodeIfPresent(titleInlineContent, forKey: .titleInlineContent)
     try container.encodeIfPresent(name, forKey: .name)
     try container.encodeIfPresent(tokens, forKey: .tokens)
     try container.encodeIfPresent(content, forKey: .content)
@@ -272,15 +279,19 @@ public struct FragmentItem: Codable, Sendable {
 }
 
 public struct ConformanceInfo: Codable, Sendable {
-  public let constraints: [ConformanceConstraint]?
-  public let conformancePrefix: [TextFragment]?
-  public let availabilityPrefix: [TextFragment]?
-}
+  public let constraints: [ContentItem]?
+  public let conformancePrefix: [ContentItem]?
+  public let availabilityPrefix: [ContentItem]?
 
-public struct ConformanceConstraint: Codable, Sendable {
-  public let code: String?
-  public let type: String
-  public let text: String?
+  public init(
+    constraints: [ContentItem]? = nil,
+    conformancePrefix: [ContentItem]? = nil,
+    availabilityPrefix: [ContentItem]? = nil
+  ) {
+    self.constraints = constraints
+    self.conformancePrefix = conformancePrefix
+    self.availabilityPrefix = availabilityPrefix
+  }
 }
 
 public struct Declaration: Codable, Sendable {
@@ -311,7 +322,7 @@ public struct TopicSection: Codable, Sendable {
   public let anchor: String?
 
   public init(
-    title: String, identifiers: [String]? = nil, children: [TopicSection]? = nil,
+    title: String = "", identifiers: [String]? = nil, children: [TopicSection]? = nil,
     abstract: [ContentItem]? = nil, anchor: String? = nil
   ) {
     self.title = title
@@ -319,6 +330,34 @@ public struct TopicSection: Codable, Sendable {
     self.children = children
     self.abstract = abstract
     self.anchor = anchor
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case title
+    case identifiers
+    case children
+    case abstract
+    case anchor
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    self.title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+    self.identifiers = try container.decodeIfPresent([String].self, forKey: .identifiers)
+    self.children = try container.decodeIfPresent([TopicSection].self, forKey: .children)
+    self.abstract = try container.decodeIfPresent([ContentItem].self, forKey: .abstract)
+    self.anchor = try container.decodeIfPresent(String.self, forKey: .anchor)
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    if !title.isEmpty {
+      try container.encode(title, forKey: .title)
+    }
+    try container.encodeIfPresent(identifiers, forKey: .identifiers)
+    try container.encodeIfPresent(children, forKey: .children)
+    try container.encodeIfPresent(abstract, forKey: .abstract)
+    try container.encodeIfPresent(anchor, forKey: .anchor)
   }
 }
 
@@ -407,30 +446,9 @@ public struct PropertyAttribute: Codable, Sendable {
   }
 }
 
-public struct IndexContentItem: Codable, Sendable {
-  public let type: String?
-  public let title: String?
-  public let path: String?
-  public let beta: Bool?
-  public let children: [IndexContentItem]?
-}
-
-public struct SwiftInterfaceItem: Codable, Sendable {
-  public let path: String?
-  public let title: String?
-  public let type: String?
-  public let children: [SwiftInterfaceItem]?
-  public let external: Bool?
-  public let beta: Bool?
-}
-
-public struct InterfaceLanguages: Codable, Sendable {
-  public let swift: [SwiftInterfaceItem]?
-}
-
 public struct Platform: Codable, Sendable {
   public let name: String
-  public let introducedAt: String
+  public let introducedAt: String?
   public let beta: Bool?
   public let deprecated: Bool?
   public let deprecatedAt: String?
@@ -438,7 +456,7 @@ public struct Platform: Codable, Sendable {
   public let unavailable: Bool?
 
   public init(
-    name: String, introducedAt: String, beta: Bool? = nil, deprecated: Bool? = nil,
+    name: String, introducedAt: String? = nil, beta: Bool? = nil, deprecated: Bool? = nil,
     deprecatedAt: String? = nil, message: String? = nil, unavailable: Bool? = nil
   ) {
     self.name = name
@@ -491,7 +509,7 @@ public struct AppleDocJSON: Codable, Sendable {
   public let metadata: DocumentationMetadata?
   public let kind: String?
   public let identifier: DocumentationIdentifier?
-  public let abstract: [TextFragment]?
+  public let abstract: [ContentItem]?
   public let deprecationSummary: [ContentItem]?
   public let sections: [ContentItem]?
   public let primaryContentSections: [PrimaryContentSection]?
@@ -500,18 +518,16 @@ public struct AppleDocJSON: Codable, Sendable {
   public let variants: [Variant]?
   public let relationshipsSections: [ContentItem]?
   public let references: [String: ContentItem]?
-  public let interfaceLanguages: InterfaceLanguages?
   public let externalOrigin: ExternalOrigin?
 
   public init(
     metadata: DocumentationMetadata? = nil, kind: String? = nil,
-    identifier: DocumentationIdentifier? = nil, abstract: [TextFragment]? = nil,
+    identifier: DocumentationIdentifier? = nil, abstract: [ContentItem]? = nil,
     deprecationSummary: [ContentItem]? = nil, sections: [ContentItem]? = nil,
     primaryContentSections: [PrimaryContentSection]? = nil,
     topicSections: [TopicSection]? = nil, seeAlsoSections: [SeeAlsoSection]? = nil,
     variants: [Variant]? = nil, relationshipsSections: [ContentItem]? = nil,
-    references: [String: ContentItem]? = nil, interfaceLanguages: InterfaceLanguages? = nil,
-    externalOrigin: ExternalOrigin? = nil
+    references: [String: ContentItem]? = nil, externalOrigin: ExternalOrigin? = nil
   ) {
     self.metadata = metadata
     self.kind = kind
@@ -525,7 +541,6 @@ public struct AppleDocJSON: Codable, Sendable {
     self.variants = variants
     self.relationshipsSections = relationshipsSections
     self.references = references
-    self.interfaceLanguages = interfaceLanguages
     self.externalOrigin = externalOrigin
   }
 }

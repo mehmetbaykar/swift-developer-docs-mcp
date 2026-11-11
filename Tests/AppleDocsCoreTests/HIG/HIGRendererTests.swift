@@ -352,7 +352,7 @@ struct HIGRendererTests {
     let item = ContentItem(
       type: "video",
       identifier: "video-1",
-      abstract: [TextFragment(text: "A demo of color usage", type: "text")]
+      abstract: [ContentItem(text: "A demo of color usage", type: "text")]
     )
 
     let result = HIGRenderer.renderHIGVideo(item, references: refs)

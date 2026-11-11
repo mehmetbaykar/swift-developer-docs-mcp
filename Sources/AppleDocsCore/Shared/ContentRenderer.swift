@@ -26,9 +26,14 @@ public struct ContentRenderer: Sendable {
         }
         return ""
       case "reference":
+        let reference = item.identifier.flatMap { references?[$0] }
         let title =
-          item.title ?? item.text
-          ?? (item.identifier.map { extractTitleFromIdentifier($0) } ?? "")
+          nonEmpty(item.title)
+          ?? nonEmpty(item.text)
+          ?? resolveReferenceTitle(
+            reference, references: references, depth: depth, externalOrigin: externalOrigin)
+          ?? item.identifier.map { extractTitleFromIdentifier($0) }
+          ?? ""
         let url =
           item.identifier != nil
           ? convertIdentifierToURL(
@@ -89,6 +94,128 @@ public struct ContentRenderer: Sendable {
         return item.text ?? ""
       }
     }.joined()
+  }
+
+  public static func resolveReferenceTitle(
+    _ reference: ContentItem?,
+    references: [String: ContentItem]?,
+    depth: Int = 0,
+    externalOrigin: String? = nil
+  ) -> String? {
+    if let titleInlineContent = reference?.titleInlineContent {
+      let rendered = renderInlineContent(
+        titleInlineContent, references: references, depth: depth + 1,
+        externalOrigin: externalOrigin)
+      if !rendered.isEmpty {
+        return rendered
+      }
+    }
+    if let title = nonEmpty(reference?.title), reference?.role == "symbol" {
+      return "`\(title)`"
+    }
+    return nonEmpty(reference?.title)
+  }
+
+  public static func renderPlainText(
+    _ inlineContent: [ContentItem],
+    references: [String: ContentItem]?,
+    depth: Int = 0
+  ) -> String {
+    if depth > MarkdownFormatting.maxInlineDepth {
+      return ""
+    }
+
+    return inlineContent.map { item in
+      if item.type == "codeVoice" {
+        return plainCode(item.code)
+      }
+      if item.type == "reference" {
+        let reference = item.identifier.flatMap { references?[$0] }
+        return nonEmpty(item.title)
+          ?? nonEmpty(item.text)
+          ?? nonEmpty(reference?.title)
+          ?? item.identifier.map { extractTitleFromIdentifier($0) }
+          ?? ""
+      }
+      if let nested = item.inlineContent {
+        return renderPlainText(nested, references: references, depth: depth + 1)
+      }
+      return item.text ?? ""
+    }.joined()
+  }
+
+  public static func renderAbstractQuote(
+    _ abstract: [ContentItem]?,
+    references: [String: ContentItem]?,
+    externalOrigin: String? = nil
+  ) -> String {
+    guard let abstract else { return "" }
+    let abstractText = renderInlineContent(
+      abstract, references: references, depth: 0, externalOrigin: externalOrigin)
+    if abstractText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      return ""
+    }
+    return "> \(abstractText)\n\n"
+  }
+
+  public static func formatPlatforms(_ platforms: [Platform]) -> String {
+    platforms.map { platform in
+      let version: String
+      if let introducedAt = platform.introducedAt, !introducedAt.isEmpty {
+        version = " \(introducedAt)+"
+      } else {
+        version = ""
+      }
+      let beta = platform.beta == true ? " Beta" : ""
+      return "\(platform.name)\(version)\(beta)"
+    }.joined(separator: ", ")
+  }
+
+  public static func renderLanguageNotice(
+    _ jsonData: AppleDocJSON, externalOrigin: String? = nil
+  ) -> String {
+    guard jsonData.identifier?.interfaceLanguage == "occ" else { return "" }
+
+    let swiftPath = jsonData.variants?
+      .compactMap { variant -> LanguageVariant? in
+        if case .language(let language) = variant { return language }
+        return nil
+      }
+      .first { language in
+        language.traits.contains { $0.interfaceLanguage == "swift" }
+      }?
+      .paths.first
+
+    if let swiftPath {
+      let url = rewriteDocumentationPath(swiftPath, externalOrigin: externalOrigin)
+      let link = "[\(url)](\(url))"
+      return MarkdownFormatting.formatCallout(
+        type: "NOTE",
+        content: "This page documents the Objective-C API. For the Swift API, see \(link)."
+      )
+    }
+
+    return MarkdownFormatting.formatCallout(
+      type: "NOTE",
+      content:
+        "This page documents the Objective-C API. Apple's documentation doesn't link a Swift version of this symbol, which may have a different name or type in Swift."
+    )
+  }
+
+  private static func nonEmpty(_ value: String?) -> String? {
+    guard let value, !value.isEmpty else { return nil }
+    return value
+  }
+
+  private static func plainCode(_ code: CodeValue?) -> String {
+    switch code {
+    case .single(let string):
+      return string
+    case .multiple(let lines):
+      return lines.joined()
+    case nil:
+      return ""
+    }
   }
 
   // MARK: - Content Array Rendering
@@ -497,18 +624,137 @@ public struct ContentRenderer: Sendable {
   ) -> String {
     var markdown = ""
     for rel in rels {
-      guard let title = rel.title, let identifiers = rel.identifiers else { continue }
+      guard let title = nonEmpty(rel.title), let identifiers = rel.identifiers else { continue }
       markdown += "## \(title)\n\n"
       for id in identifiers {
-        let info = variants?.first { $0.identifier == id }
-        let reference = refs?[id]
-        let displayTitle = info?.title ?? reference?.title ?? extractTitleFromIdentifier(id)
-        let url = convertIdentifierToURL(id, references: refs, externalOrigin: externalOrigin)
-        markdown += "- [\(displayTitle)](\(url))\n"
+        let link = resolveLink(
+          id, variants: variants, refs: refs, externalOrigin: externalOrigin)
+        let condition = renderCondition(
+          refs?[id], prefix: .conformance, refs: refs, externalOrigin: externalOrigin)
+        markdown += "- [\(link.title)](\(link.url))"
+        if !condition.isEmpty {
+          markdown += " \(condition)"
+        }
+        markdown += "\n"
       }
       markdown += "\n"
     }
     return markdown
+  }
+
+  public static func renderTopicSections(
+    _ topics: [TopicSection], variants: [Variant]?, refs: [String: ContentItem]?,
+    externalOrigin: String? = nil
+  ) -> String {
+    var markdown = ""
+    for topic in topics {
+      if !topic.title.isEmpty {
+        markdown += "## \(topic.title)\n\n"
+      }
+      if let identifiers = topic.identifiers {
+        for id in identifiers {
+          let link = resolveLink(
+            id, variants: variants, refs: refs, externalOrigin: externalOrigin)
+          let deprecatedLabel = link.deprecated ? " *(Deprecated)*" : ""
+          markdown += "- [\(link.title)](\(link.url))\(deprecatedLabel)"
+          if !link.abstract.isEmpty {
+            markdown += " \(link.abstract)"
+          }
+          let condition = renderCondition(
+            refs?[id], prefix: .availability, refs: refs, externalOrigin: externalOrigin)
+          if !condition.isEmpty {
+            markdown += " \(condition)"
+          }
+          markdown += "\n"
+        }
+        markdown += "\n"
+      }
+    }
+    return markdown
+  }
+
+  public static func renderSeeAlso(
+    _ sections: [SeeAlsoSection], variants: [Variant]?, refs: [String: ContentItem]?,
+    externalOrigin: String? = nil
+  ) -> String {
+    var markdown = ""
+    for section in sections {
+      guard let identifiers = section.identifiers, !section.title.isEmpty else { continue }
+      markdown += "## \(section.title)\n\n"
+      for id in identifiers {
+        let link = resolveLink(
+          id, variants: variants, refs: refs, externalOrigin: externalOrigin)
+        let condition = renderCondition(
+          refs?[id], prefix: .availability, refs: refs, externalOrigin: externalOrigin)
+        markdown += "- [\(link.title)](\(link.url))"
+        if !condition.isEmpty {
+          markdown += " \(condition)"
+        }
+        markdown += "\n"
+      }
+      markdown += "\n"
+    }
+    return markdown
+  }
+
+  private struct ResolvedLink {
+    let title: String
+    let url: String
+    let abstract: String
+    let deprecated: Bool
+  }
+
+  private enum ConditionPrefix {
+    case conformance
+    case availability
+  }
+
+  private static func resolveLink(
+    _ id: String, variants: [Variant]?, refs: [String: ContentItem]?,
+    externalOrigin: String?
+  ) -> ResolvedLink {
+    let info = variants?.first { $0.identifier == id }
+    let reference = refs?[id]
+    let title =
+      nonEmpty(info?.title)
+      ?? resolveReferenceTitle(
+        reference, references: refs, depth: 0, externalOrigin: externalOrigin)
+      ?? extractTitleFromIdentifier(id)
+    let url = convertIdentifierToURL(id, references: refs, externalOrigin: externalOrigin)
+    let abstractContent = info?.abstract ?? reference?.abstract
+    let abstract =
+      abstractContent.map {
+        renderInlineContent($0, references: refs, depth: 0, externalOrigin: externalOrigin)
+      } ?? ""
+    return ResolvedLink(
+      title: title, url: url, abstract: abstract, deprecated: reference?.deprecated == true)
+  }
+
+  private static func renderCondition(
+    _ reference: ContentItem?,
+    prefix: ConditionPrefix,
+    refs: [String: ContentItem]?,
+    externalOrigin: String?
+  ) -> String {
+    guard let constraints = reference?.conformance?.constraints, !constraints.isEmpty else {
+      return ""
+    }
+    let prefixItems: [ContentItem]
+    switch prefix {
+    case .conformance:
+      prefixItems = reference?.conformance?.conformancePrefix ?? []
+    case .availability:
+      prefixItems = reference?.conformance?.availabilityPrefix ?? []
+    }
+    let inlineContent: [ContentItem]
+    if prefixItems.isEmpty {
+      inlineContent = constraints
+    } else {
+      inlineContent = prefixItems + [ContentItem(text: " ", type: "text")] + constraints
+    }
+    return renderInlineContent(
+      inlineContent, references: refs, depth: 0, externalOrigin: externalOrigin
+    ).trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   public static func normalizeFenceLanguage(_ syntax: String) -> String {

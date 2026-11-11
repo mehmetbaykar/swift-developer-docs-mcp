@@ -4,7 +4,7 @@ import Foundation
 
 public struct LanguageVariant: Codable, Sendable {
   public let title: String?
-  public let abstract: [TextFragment]?
+  public let abstract: [ContentItem]?
   public let identifier: String?
   public let type: String?
   public let role: String?
@@ -13,7 +13,7 @@ public struct LanguageVariant: Codable, Sendable {
   public let paths: [String]
 
   public init(
-    title: String? = nil, abstract: [TextFragment]? = nil, identifier: String? = nil,
+    title: String? = nil, abstract: [ContentItem]? = nil, identifier: String? = nil,
     type: String? = nil, role: String? = nil, kind: String? = nil,
     traits: [LanguageTrait] = [], paths: [String] = []
   ) {
@@ -40,7 +40,7 @@ public struct LanguageTrait: Codable, Sendable {
 
 public struct ImageVariant: Codable, Sendable {
   public let title: String?
-  public let abstract: [TextFragment]?
+  public let abstract: [ContentItem]?
   public let identifier: String?
   public let type: String?
   public let role: String?
@@ -49,7 +49,7 @@ public struct ImageVariant: Codable, Sendable {
   public let traits: [String]
 
   public init(
-    title: String? = nil, abstract: [TextFragment]? = nil, identifier: String? = nil,
+    title: String? = nil, abstract: [ContentItem]? = nil, identifier: String? = nil,
     type: String? = nil, role: String? = nil, kind: String? = nil,
     url: String, traits: [String] = []
   ) {
@@ -68,7 +68,7 @@ public struct ImageVariant: Codable, Sendable {
 
 public struct SymbolVariant: Codable, Sendable {
   public let title: String?
-  public let abstract: [TextFragment]?
+  public let abstract: [ContentItem]?
   public let identifier: String?
   public let type: String?
   public let role: String?
@@ -78,7 +78,7 @@ public struct SymbolVariant: Codable, Sendable {
   public let conformance: ConformanceInfo?
 
   public init(
-    title: String? = nil, abstract: [TextFragment]? = nil, identifier: String? = nil,
+    title: String? = nil, abstract: [ContentItem]? = nil, identifier: String? = nil,
     type: String? = nil, role: String? = nil, kind: String? = nil,
     url: String? = nil, fragments: [FragmentItem]? = nil, conformance: ConformanceInfo? = nil
   ) {
@@ -155,7 +155,7 @@ public enum Variant: Codable, Sendable {
     }
   }
 
-  public var abstract: [TextFragment]? {
+  public var abstract: [ContentItem]? {
     switch self {
     case .language(let v): return v.abstract
     case .image(let v): return v.abstract
