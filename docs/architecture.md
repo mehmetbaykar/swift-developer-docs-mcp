@@ -50,13 +50,14 @@ The project has two targets:
 │  │            │ │         │ │      │ │       │              │  │
 │  │ Renderer   │ │ Parser  │ │Fetch │ │Trans- │ Policy       │  │
 │  │ Fetcher    │ │ Client  │ │Render│ │cript  │ Robots       │  │
-│  │            │ │ Types   │ │Resolv│ │       │ Fetcher      │  │
+│  │ Resolver   │ │ Types   │ │Resolv│ │       │ Fetcher      │  │
 │  └────────────┘ └─────────┘ │Types │ │       │ Renderer     │  │
 │                              └──────┘ └───────┴──────────────┘  │
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │                    Shared                                │   │
-│  │  Types, Fetcher, ContentRenderer, RenderingContext,      │   │
-│  │  RenderConfig, AppleDocsError, VariantTypes, URLUtils    │   │
+│  │  Types, Fetcher, ContentRenderer, MarkdownFormatting,    │   │
+│  │  RenderingContext, RenderConfig, AppleDocsError,         │   │
+│  │  VariantTypes, URLUtils                                  │   │
 │  └──────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -67,16 +68,18 @@ The project has two targets:
 Sources/AppleDocsCore/
 ├── Shared/
 │   ├── Types.swift              — Codable types (ContentItem, AppleDocJSON, etc.)
-│   ├── AppleDocsError.swift     — Unified error enum (10 cases)
+│   ├── AppleDocsError.swift     — Unified error enum (11 cases)
 │   ├── VariantTypes.swift       — LanguageVariant, ImageVariant, SymbolVariant
 │   ├── Fetcher.swift            — Injectable HTTP client with UA rotation
 │   ├── ContentRenderer.swift    — Shared rendering (inline, blocks, tables, asides)
+│   ├── MarkdownFormatting.swift — Shared list, code block, table, and callout formatting
 │   ├── RenderingContext.swift   — Injectable rendering closures
 │   ├── RenderConfig.swift       — Rendering state (basePath, isExternal, etc.)
 │   └── URLUtilities.swift       — Path normalization, URL generation
 ├── Reference/
 │   ├── ReferenceRenderer.swift  — Reference doc → Markdown
-│   └── ReferenceFetcher.swift   — Injectable reference doc fetching
+│   ├── ReferenceFetcher.swift   — Injectable reference doc fetching
+│   └── DocumentationPageResolver.swift — Path resolution for missing symbol pages
 ├── Search/
 │   ├── SearchParser.swift       — Apple search JSONL client + result normalization
 │   ├── SearchClient.swift       — Injectable search struct
@@ -112,7 +115,8 @@ Sources/swift-developer-docs-mcp/
 │   ├── SearchTool.swift         — searchAppleDocumentation
 │   ├── FetchDocumentationTool.swift — fetchAppleDocumentation
 │   ├── FetchExternalDocTool.swift   — fetchExternalDocumentation
-│   └── FetchVideoTranscriptTool.swift — fetchAppleVideoTranscript
+│   ├── FetchVideoTranscriptTool.swift — fetchAppleVideoTranscript
+│   └── ToolExecutionError.swift — Failure raised as an MCP tool error
 ├── Server/
 │   ├── ServerApp.swift          — Hummingbird routes + llms.txt
 │   ├── AgentDiscovery.swift     — SKILL.md, agent card, api-catalog, agent-skills index
@@ -185,11 +189,11 @@ The CLI uses a protocol-based design with 6 commands:
 | `external <url>` | Fetch external Swift-DocC documentation |
 | `serve [--port N]` | Start HTTP server (default: 8080) |
 
-All commands support `--json` for JSON output.
+All commands support `--json` for JSON output. When a command fails, it prints one line `swift-developer-docs-mcp: <message>` to standard error and exits with status 1. `fetch --json` puts the URL of the resolved page in `url`.
 
 ## MCP Tools
 
-4 MCP tools registered via FastMCP macros:
+4 MCP tools registered via FastMCP macros. The names are `searchAppleDocumentation`, `fetchAppleDocumentation`, `fetchExternalDocumentation`, and `fetchAppleVideoTranscript`.
 
 | Tool | Input | Description |
 |------|-------|-------------|
@@ -198,13 +202,15 @@ All commands support `--json` for JSON output.
 | `fetchExternalDocumentation` | `url: String` | Fetch external DocC with SSRF protection |
 | `fetchAppleVideoTranscript` | `path: String` | Fetch video transcripts |
 
+The three fetch tools return plain Markdown text. `fetchAppleDocumentation` puts a text block before the Markdown when the page is at another path than the requested path: `No page exists at /documentation/<requested>. This is the page at /documentation/<resolved>.` A failure is a tool error (`isError`). The server instructions say that conformance conditions in Apple's data can be missing or wrong.
+
 ## HTTP Server
 
 Hummingbird-based HTTP server with these routes:
 
 | Route | Description |
 |-------|-------------|
-| `GET /` | llms.txt content |
+| `GET /` | HTML landing page, or `llms.txt` when `Accept: text/markdown` |
 | `GET /llms.txt` | llms.txt content |
 | `GET /search?q=...` | Search with content negotiation |
 | `GET /documentation/{path+}` | Reference documentation |
@@ -216,7 +222,7 @@ Hummingbird-based HTTP server with these routes:
 
 Middleware stack: TrailingSlashMiddleware → SecurityHeadersMiddleware → CORSMiddleware
 
-Content negotiation: `GET /` returns HTML by default and `llms.txt` when `Accept: text/markdown` is sent. Documentation routes return JSON for `Accept: application/json`, otherwise Markdown. Responses include `ETag`, `Cache-Control`, and `Content-Location` headers.
+Content negotiation: `GET /` returns HTML by default and `llms.txt` when `Accept: text/markdown` is sent. Documentation routes return JSON for `Accept: application/json`, otherwise Markdown. Responses include `ETag`, `Cache-Control`, and `Content-Location` headers. `GET /documentation/{path}` sets `Content-Location` to the URL of the resolved page. A missing page returns status 404. When more than one symbol matches, the Markdown answer has a `## Did you mean:` list and the JSON answer has a `candidates` array of objects with `title` and `path`.
 
 ## Core Library Modules
 
@@ -229,11 +235,20 @@ Shared rendering engine used by both ReferenceRenderer and ExternalRenderer:
 - `renderContentArray` — heading, paragraph, codeListing, lists, aside, table, row/column layout
 - `renderTable`, `renderAside`, `renderImage`, `renderProperties`, `renderRelationships`
 - Depth-limited (max content depth 50, max inline depth 20) to prevent stack overflow on malformed data while still supporting deeply nested Apple docs
+- `MarkdownFormatting` formats lists, code blocks, tables, and callouts. Nested lists are indented.
+
+### Reference pages
+`DocumentationPageResolver` resolves a path before the page is rendered. Apple's paths for functions, methods, and overloaded symbols include a signature or a disambiguation suffix. When the requested page does not exist, the fetcher looks for the symbol in the references of the parent page. Exactly one match returns that page: `uniformtypeidentifiers/uttype/markdown` opens `uniformtypeidentifiers/uttype-swift.struct/markdown`. More than one match is an error that lists the candidate paths: `swiftui/view/body` lists `body-swift.associatedtype` and `body-8kl5o`. A slash at the end of a path is removed. Framework pages such as `/documentation/swiftui` come from the page JSON.
+
+Abstracts keep code spans and links. Symbol link titles are in backticks. Relationship, topic, and see-also items show conditions such as "Conforms when `Element` conforms to `Equatable`." A page that documents an Objective-C symbol includes a note that links the Swift version.
+
+### Search
+Live search posts to `https://devintserv.msc.sbz.apple.com/api/v1/query` and reads the JSONL answer in `SearchParser.swift`. A result has title, url, description, breadcrumbs, tags, and type. A failed search is an error, not an empty list. `SearchParser.swift` still contains an HTML parser; live search does not use it.
 
 ### HIG Module
 Full Human Interface Guidelines support:
-- ToC fetch from Apple's index API
-- Page rendering with breadcrumbs, front matter, content sections
+- ToC fetch from Apple's index API. The table of contents lists every section.
+- Page rendering with breadcrumbs, front matter, and content sections. Each tab of a tabbed section is rendered, including the Dynamic Type size tables on the Typography page.
 - Path resolution for moved/renamed topics (leaf slug matching)
 
 ### Video Module
@@ -256,14 +271,14 @@ External Swift-DocC documentation with full SSRF protection:
 | Package | Purpose |
 |---------|---------|
 | [swift-fast-mcp](https://github.com/mehmetbaykar/swift-fast-mcp) | MCP server framework (stdio transport, macro-based tool registration) |
-| [SwiftSoup](https://github.com/scinfu/SwiftSoup) | HTML parsing for search results, video transcripts, robots.txt |
+| [SwiftSoup](https://github.com/scinfu/SwiftSoup) | HTML parsing for video transcripts. `SearchParser.swift` still contains an HTML parser; live search does not use it. |
 | [Hummingbird](https://github.com/hummingbird-project/hummingbird) | HTTP server framework |
 
 ## Test Coverage
 
 The test suite covers:
 - Reference rendering (smoke tests, snapshot tests, content renderer tests)
-- Search parsing (HTML fixture-based tests)
+- Search parsing (JSONL search service, plus the HTML parser)
 - HIG (fetcher, renderer, path resolver, types codability)
 - Video transcripts (path parsing, title extraction, timestamp formatting)
 - External docs (SSRF policy, robots.txt caching, fetcher, renderer)

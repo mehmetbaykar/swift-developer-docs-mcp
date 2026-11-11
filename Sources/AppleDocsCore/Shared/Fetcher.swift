@@ -62,18 +62,22 @@ extension Fetcher {
     userAgents.randomElement()!
   }
 
-  public static func fetchJSONData(path: String) async throws -> AppleDocJSON {
-    let normalizedPath = URLUtilities.normalizeDocumentationPath(path)
-    let jsonPath = "documentation/\(normalizedPath)"
-    let parts = jsonPath.split(separator: "/")
-
-    let jsonUrl: String
-    if parts.count == 2 {
-      let framework = parts[1]
-      jsonUrl = "https://developer.apple.com/tutorials/data/index/\(framework)"
-    } else {
-      jsonUrl = "https://developer.apple.com/tutorials/data/\(jsonPath).json"
+  public static func fetchDocumentationPage(path: String) async throws -> DocumentationPage {
+    try await DocumentationPageResolver.resolve(path: path) { normalizedPath in
+      try await fetchPageJSON(normalizedPath: normalizedPath)
     }
+  }
+
+  public static func fetchJSONData(path: String) async throws -> AppleDocJSON {
+    try await fetchDocumentationPage(path: path).data
+  }
+
+  static func pageJSONURL(normalizedPath: String) -> String {
+    "https://developer.apple.com/tutorials/data/documentation/\(normalizedPath).json"
+  }
+
+  private static func fetchPageJSON(normalizedPath: String) async throws -> AppleDocJSON {
+    let jsonUrl = pageJSONURL(normalizedPath: normalizedPath)
 
     guard let url = URL(string: jsonUrl) else {
       throw AppleDocsError.invalidURL(jsonUrl)
@@ -87,6 +91,9 @@ extension Fetcher {
     let (data, response) = try await URLSession.shared.data(for: request)
 
     if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
+      if httpResponse.statusCode == 404 {
+        throw AppleDocsError.documentationNotFound(url: jsonUrl, candidates: [])
+      }
       throw AppleDocsError.httpError(statusCode: httpResponse.statusCode, url: jsonUrl)
     }
 

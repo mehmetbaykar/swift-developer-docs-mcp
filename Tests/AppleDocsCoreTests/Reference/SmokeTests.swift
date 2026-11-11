@@ -121,6 +121,12 @@ struct SmokeTests {
     #expect(result.contains("[`append(_:)`]"))
     #expect(result.contains("[`insert(_:at:)`]"))
     #expect(result.contains("[`remove(at:)`]"))
+    #expect(!result.contains("[`init ()`]"))
+    #expect(!result.contains("[`append (_:)`]"))
+    #expect(
+      result.contains(
+        "[`Decodable`](/documentation/swift/decodable) Conforms when `Element` conforms to `Decodable`."
+      ))
     #expect(!result.contains("[init ()]"))
     #expect(!result.contains("[append (_:)]"))
   }

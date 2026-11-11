@@ -2,11 +2,15 @@ import AppleDocsCore
 import FastMCP
 import Foundation
 
-@Tool("Fetch transcript for an Apple Developer video path and return as markdown")
+@Tool(
+  "Fetch the transcript of an Apple Developer video (https://developer.apple.com/videos) by path and return it as Markdown"
+)
 struct FetchAppleVideoTranscriptTool {
   @Generable
   struct Arguments {
-    @Parameter("Apple Developer video path, for example /videos/play/wwdc2024/10133")
+    @Parameter(
+      "Apple video path (e.g., '/videos/play/wwdc2021/10133' or '/videos/play/meet-with-apple/208')"
+    )
     var path: String
   }
 
@@ -18,5 +22,10 @@ struct FetchAppleVideoTranscriptTool {
         "Error fetching Apple video transcript for \"\(arguments.path)\": \(error.localizedDescription)"
       )
     }
+  }
+
+  func makeOutputSegments(from arguments: GeneratedContent) async throws -> [Transcript.Segment] {
+    let markdown = try await execute(try Arguments(arguments))
+    return [.text(.init(content: markdown))]
   }
 }

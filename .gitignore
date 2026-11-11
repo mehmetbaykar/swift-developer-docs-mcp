@@ -13,3 +13,4 @@ bin/
 *.key
 *.p12
 .agent-team/
+tmp/

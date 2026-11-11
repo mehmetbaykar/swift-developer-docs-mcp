@@ -144,6 +144,61 @@ struct HIGRendererTests {
     #expect(markdown.contains("- [Color]"))
   }
 
+  @Test("Renders collection groups and their nested articles")
+  func renderCollectionTableOfContents() {
+    let toc = HIGTableOfContents(
+      includedArchiveIdentifiers: [],
+      interfaceLanguages: HIGInterfaceLanguages(swift: [
+        HIGTocItem(
+          children: [
+            HIGTocItem(
+              children: [
+                HIGTocItem(
+                  children: [
+                    HIGTocItem(
+                      path: "/design/human-interface-guidelines/buttons",
+                      title: "Buttons",
+                      type: "article"
+                    )
+                  ],
+                  path: "/design/human-interface-guidelines/menus-and-actions",
+                  title: "Menus and actions",
+                  type: "collection"
+                )
+              ],
+              path: "/design/human-interface-guidelines/components",
+              title: "Components",
+              type: "collection"
+            )
+          ],
+          path: "/design/human-interface-guidelines",
+          title: "Human Interface Guidelines",
+          type: "module"
+        )
+      ]),
+      references: [:],
+      schemaVersion: SchemaVersion(major: 0, minor: 3, patch: 0)
+    )
+
+    let items = HIGRenderer.renderHIGTocItems(toc.interfaceLanguages.swift, headingLevel: 2)
+    #expect(
+      items
+        == """
+        ## Human Interface Guidelines
+
+        ### Components
+
+        #### Menus and actions
+
+        - [Buttons](/design/human-interface-guidelines/buttons)
+
+        """)
+    #expect(
+      HIGRenderer.renderHIGTableOfContents(toc: toc).contains(
+        "### Components\n\n#### Menus and actions\n\n- [Buttons](/design/human-interface-guidelines/buttons)\n"
+      ))
+  }
+
   // MARK: - Inline content
 
   @Test("Renders inline emphasis and strong")
@@ -297,7 +352,7 @@ struct HIGRendererTests {
     let item = ContentItem(
       type: "video",
       identifier: "video-1",
-      abstract: [TextFragment(text: "A demo of color usage", type: "text")]
+      abstract: [ContentItem(text: "A demo of color usage", type: "text")]
     )
 
     let result = HIGRenderer.renderHIGVideo(item, references: refs)
@@ -433,7 +488,9 @@ struct HIGRendererTests {
 
     let result = HIGRenderer.renderHIGTocItems(items, headingLevel: 3)
 
-    #expect(result.contains("- [Accessibility](/design/human-interface-guidelines/accessibility)\n\n### Patterns"))
+    #expect(
+      result.contains(
+        "- [Accessibility](/design/human-interface-guidelines/accessibility)\n\n### Patterns"))
   }
 
   @Test("Video falls back to alt when no abstract")
@@ -452,5 +509,339 @@ struct HIGRendererTests {
 
     let result = HIGRenderer.renderHIGVideo(item, references: refs)
     #expect(result.contains("[Alt Text]"))
+  }
+
+  @Test("Normalizes DocC occ syntax to objc")
+  func normalizesObjectiveCSyntax() {
+    let result = HIGRenderer.renderHIGContent(
+      sections: [
+        ContentItem(
+          type: "codeListing",
+          code: .multiple(["NSButton *button;"]),
+          syntax: "occ")
+      ],
+      references: [:]
+    )
+    #expect(result.contains("```objc\nNSButton *button;\n```"))
+  }
+
+  @Test("Indents nested unordered lists under their parent item")
+  func nestedUnorderedList() {
+    let result = HIGRenderer.renderHIGContent(
+      sections: [
+        ContentItem(
+          type: "unorderedList",
+          items: [
+            ContentItem(content: [
+              ContentItem(
+                type: "paragraph",
+                inlineContent: [ContentItem(text: "Parent item:", type: "text")]),
+              ContentItem(
+                type: "unorderedList",
+                items: [
+                  ContentItem(content: [
+                    ContentItem(
+                      type: "paragraph",
+                      inlineContent: [ContentItem(text: "Nested item", type: "text")])
+                  ])
+                ]),
+            ])
+          ])
+      ],
+      references: [:]
+    )
+    #expect(result.contains(["- Parent item:", "  - Nested item"].joined(separator: "\n")))
+  }
+
+  @Test("Indents nested content under ordered list markers")
+  func nestedOrderedList() {
+    let result = HIGRenderer.renderHIGContent(
+      sections: [
+        ContentItem(
+          type: "orderedList",
+          items: [
+            ContentItem(content: [
+              ContentItem(
+                type: "paragraph",
+                inlineContent: [ContentItem(text: "Parent item:", type: "text")]),
+              ContentItem(
+                type: "unorderedList",
+                items: [
+                  ContentItem(content: [
+                    ContentItem(
+                      type: "paragraph",
+                      inlineContent: [ContentItem(text: "Nested item", type: "text")])
+                  ])
+                ]),
+            ])
+          ])
+      ],
+      references: [:]
+    )
+    #expect(result.contains(["1. Parent item:", "   - Nested item"].joined(separator: "\n")))
+  }
+
+  @Test("Keeps rendering inline content inside deeply nested blocks")
+  func inlineContentInsideDeepBlocks() {
+    func nestBlocks(_ depth: Int) -> ContentItem {
+      let paragraph = ContentItem(
+        type: "paragraph",
+        inlineContent: [ContentItem(text: "Level \(depth) text", type: "text")]
+      )
+      if depth <= 0 {
+        return ContentItem(content: [paragraph])
+      }
+      return ContentItem(content: [
+        paragraph,
+        ContentItem(type: "unorderedList", items: [nestBlocks(depth - 1)]),
+      ])
+    }
+
+    let result = HIGRenderer.renderHIGContent(
+      sections: [
+        ContentItem(type: "unorderedList", items: [nestBlocks(30)])
+      ],
+      references: [:]
+    )
+    #expect(!result.contains("[Inline content too deeply nested]"))
+    #expect(result.contains("Level 0 text"))
+    #expect(result.contains("Level 30 text"))
+  }
+
+  @Test("Returns the content depth placeholder past the block limit")
+  func contentDepthGuard() {
+    func createDeepContent(_ depth: Int) -> ContentItem {
+      if depth <= 0 {
+        return ContentItem(
+          type: "paragraph",
+          inlineContent: [ContentItem(text: "Deep content", type: "text")])
+      }
+      return ContentItem(
+        type: "aside",
+        content: [createDeepContent(depth - 1)],
+        style: "note")
+    }
+
+    let result = HIGRenderer.renderHIGContent(
+      sections: [createDeepContent(100)],
+      references: [:]
+    )
+    #expect(result.contains("[Content too deeply nested]"))
+    #expect(
+      HIGRenderer.renderHIGContent(
+        sections: [
+          ContentItem(
+            type: "paragraph",
+            inlineContent: [ContentItem(text: "too deep", type: "text")])
+        ],
+        references: [:],
+        depth: 51
+      ) == "[Content too deeply nested]"
+    )
+  }
+
+  @Test("Returns the inline depth placeholder past the inline limit")
+  func inlineDepthGuard() {
+    func createDeepInline(_ depth: Int) -> ContentItem {
+      if depth <= 0 {
+        return ContentItem(text: "Deep inline text", type: "text")
+      }
+      return ContentItem(
+        type: depth % 2 == 0 ? "emphasis" : "strong",
+        inlineContent: [createDeepInline(depth - 1)]
+      )
+    }
+
+    let result = HIGRenderer.renderHIGContent(
+      sections: [
+        ContentItem(type: "paragraph", inlineContent: [createDeepInline(50)])
+      ],
+      references: [:]
+    )
+    #expect(result.contains("[Inline content too deeply nested]"))
+    #expect(
+      HIGRenderer.renderHIGInlineContent(
+        [ContentItem(text: "too deep", type: "text")],
+        references: [:],
+        depth: 21
+      ) == "[Inline content too deeply nested]"
+    )
+  }
+
+  // MARK: - Tab navigator
+
+  @Test("Renders every tab when a heading repeats the title")
+  func tabHeadingRepeatsTitle() {
+    let item = ContentItem(
+      type: "tabNavigator",
+      tabs: [
+        TabNavigatorTab(
+          title: "xSmall",
+          content: [
+            ContentItem(text: "xSmall", type: "heading", level: 4),
+            sizeTable(style: "Large Title", size: "31"),
+          ]),
+        TabNavigatorTab(
+          title: "Large (default)",
+          content: [
+            ContentItem(text: "Large (default)", type: "heading", level: 4),
+            sizeTable(style: "Large Title", size: "34"),
+          ]),
+      ])
+
+    let result = HIGRenderer.renderHIGContent(sections: [item], references: [:])
+    #expect(
+      result
+        == """
+        #### xSmall
+
+        | Style | Size (points) |
+        | --- | --- |
+        | Large Title | 31 |
+
+        #### Large (default)
+
+        | Style | Size (points) |
+        | --- | --- |
+        | Large Title | 34 |
+
+
+        """)
+  }
+
+  @Test("Omits the tab label when a heading starts with the title")
+  func tabHeadingQualifierOmitsLabel() {
+    let item = ContentItem(
+      type: "tabNavigator",
+      tabs: [
+        TabNavigatorTab(
+          title: "Small",
+          content: [
+            ContentItem(text: "Small (default 38mm)", type: "heading", level: 4),
+            ContentItem(
+              type: "paragraph",
+              inlineContent: [ContentItem(text: "Compact", type: "text")]),
+          ])
+      ])
+
+    let result = HIGRenderer.renderHIGContent(sections: [item], references: [:])
+    #expect(
+      result
+        == """
+        #### Small (default 38mm)
+
+        Compact
+
+
+        """)
+  }
+
+  @Test("Labels HIG tabs that do not lead with a heading")
+  func tabWithoutHeadingAddsLabel() {
+    let item = ContentItem(
+      type: "tabNavigator",
+      tabs: [
+        TabNavigatorTab(
+          title: "SF Pro",
+          content: [
+            ContentItem(
+              type: "paragraph",
+              inlineContent: [ContentItem(text: "Neutral", type: "text")])
+          ]),
+        TabNavigatorTab(
+          title: "New York",
+          content: [
+            ContentItem(
+              type: "paragraph",
+              inlineContent: [ContentItem(text: "Serif", type: "text")])
+          ]),
+      ])
+
+    let result = HIGRenderer.renderHIGContent(sections: [item], references: [:])
+    #expect(
+      result
+        == """
+        **SF Pro**
+
+        Neutral
+
+        **New York**
+
+        Serif
+
+
+        """)
+  }
+
+  @Test("Keeps the tab label when the leading heading does not repeat the title")
+  func tabDifferentHeadingKeepsLabel() {
+    let item = ContentItem(
+      type: "tabNavigator",
+      tabs: [
+        TabNavigatorTab(
+          title: "Large",
+          content: [
+            ContentItem(text: "Overview", type: "heading", level: 4),
+            ContentItem(
+              type: "paragraph",
+              inlineContent: [ContentItem(text: "Roomy", type: "text")]),
+          ])
+      ])
+
+    let result = HIGRenderer.renderHIGContent(sections: [item], references: [:])
+    #expect(
+      result
+        == """
+        **Large**
+
+        #### Overview
+
+        Roomy
+
+
+        """)
+  }
+
+  @Test("Renders an empty tab navigator as an empty string")
+  func emptyTabNavigator() {
+    #expect(
+      HIGRenderer.renderHIGContent(
+        sections: [ContentItem(type: "tabNavigator")],
+        references: [:]
+      ) == "")
+    #expect(
+      HIGRenderer.renderHIGContent(
+        sections: [ContentItem(type: "tabNavigator", tabs: [])],
+        references: [:]
+      ) == "")
+  }
+
+  private func sizeTable(style: String, size: String) -> ContentItem {
+    ContentItem(
+      type: "table",
+      header: "row",
+      rows: [
+        [
+          [
+            ContentItem(
+              type: "paragraph", inlineContent: [ContentItem(text: "Style", type: "text")])
+          ],
+          [
+            ContentItem(
+              type: "paragraph",
+              inlineContent: [ContentItem(text: "Size (points)", type: "text")])
+          ],
+        ],
+        [
+          [
+            ContentItem(
+              type: "paragraph", inlineContent: [ContentItem(text: style, type: "text")])
+          ],
+          [
+            ContentItem(
+              type: "paragraph", inlineContent: [ContentItem(text: size, type: "text")])
+          ],
+        ],
+      ])
   }
 }

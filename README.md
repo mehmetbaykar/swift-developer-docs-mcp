@@ -82,14 +82,18 @@ npx @mehmetbaykar/swift-developer-docs-mcp help
 
 | Command | Description |
 |---------|-------------|
-| `search <query>` | Search Apple Developer docs by keyword. Returns titles, URLs, descriptions, breadcrumbs, and tags. |
+| `search <query>` | Search Apple Developer docs. Each result has a title, URL, description, breadcrumbs, tags, and type. A failed search is an error. |
 | `fetch <path-or-url>` | Fetch any doc type — auto-routes based on path (reference docs, HIG, video, external). |
 | `hig [path]` | Fetch Human Interface Guidelines. No path = table of contents. |
 | `video <path>` | Fetch WWDC video transcript (e.g., `videos/play/wwdc2024/10133`). |
 | `external <url>` | Fetch external Swift-DocC documentation by URL. |
 | `serve [--port N]` | Start HTTP server (default: port 8080). |
 
-All commands support `--json` for JSON output.
+All commands support `--json` for JSON output. When a command fails, it prints one line `swift-developer-docs-mcp: <message>` to standard error and exits with status 1. `fetch --json` puts the URL of the resolved page in `url`.
+
+Search posts to `https://devintserv.msc.sbz.apple.com/api/v1/query` and reads the JSONL answer (`Sources/AppleDocsCore/Search/SearchParser.swift`). A request or payload failure is an error. A successful search with no matches is an empty result list.
+
+Apple's paths for functions, methods, and overloaded symbols include a signature or a disambiguation suffix. When a requested page does not exist, the fetcher looks for the symbol in the references of the parent page (`Sources/AppleDocsCore/Reference/DocumentationPageResolver.swift`). Exactly one match returns that page: `uniformtypeidentifiers/uttype/markdown` opens `uniformtypeidentifiers/uttype-swift.struct/markdown`. More than one match is an error that lists the candidate paths: `swiftui/view/body` lists `body-swift.associatedtype` and `body-8kl5o`. A slash at the end of a path is removed. Framework pages such as `/documentation/swiftui` come from the page JSON. HIG pages render the content of each tab in a tabbed section, and the table of contents lists every section.
 
 <details>
 <summary>Using a local build</summary>
@@ -108,27 +112,23 @@ All commands support `--json` for JSON output.
 <summary>Example: search output</summary>
 
 ```
-Found 63 results for 'SwiftUI View':
+Found 6 result(s) for "SwiftUI View":
 
-1. **SwiftUI**
-   URL: https://developer.apple.com/documentation/swiftui/
-   Declare the user interface and behavior for your app on every platform.
-   Path: SwiftUI > SwiftUI
-   Tags: DOCUMENTATION, Swift
+1. View
+   https://developer.apple.com/documentation/swiftui/view
+   A type that represents part of your app’s user interface and provides modifiers that you use to configure views.
 
-2. **Declaring a custom view**
-   URL: https://developer.apple.com/documentation/swiftui/declaring-a-custom-view/
-   Define views and assemble them into a view hierarchy.
-   Tags: DOCUMENTATION ARTICLE, Swift
+2. ViewDimensions
+   https://developer.apple.com/documentation/swiftui/viewdimensions
+   A view’s size and alignment guides in its own coordinate space.
 
-3. **View fundamentals**
-   URL: https://developer.apple.com/documentation/swiftui/view-fundamentals/
-   Define the visual elements of your app using a hierarchy of views.
-   Tags: DOCUMENTATION ARTICLE, Swift
+3. ViewModifier
+   https://developer.apple.com/documentation/swiftui/viewmodifier
+   A modifier that you apply to a view or another view modifier, producing a different version of the original value.
 ...
 ```
 
-Results also include structured JSON for programmatic use. Result types include `DOCUMENTATION`, `DOCUMENTATION ARTICLE`, `SAMPLE CODE`, and `WWDC VIDEO`.
+The text lists the title, URL, and description. `search --json` also includes breadcrumbs, tags, and type.
 
 </details>
 
@@ -175,7 +175,7 @@ Arrays are one of the most commonly used data types in an app...
 ...
 ```
 
-The fetch output includes the full documentation: overview with Swift code examples, all topic sections (20+ categories for complex types), conformances, related types, and see-also links.
+The fetch output includes the full documentation: overview with Swift code examples, topic sections, conformances, related types, and see-also links. Abstracts keep code spans and links. Symbol link titles are in backticks. Relationship, topic, and see-also items show conditions such as "Conforms when `Element` conforms to `Equatable`." A page that documents an Objective-C symbol includes a note that links the Swift version. Nested lists are indented.
 
 </details>
 
@@ -194,8 +194,8 @@ npx @mehmetbaykar/swift-developer-docs-mcp serve --port 8080
 | `GET /` | HTML landing page, or `llms.txt` when `Accept: text/markdown` |
 | `GET /search?q=...` | Search documentation |
 | `GET /documentation/{path}` | Reference documentation |
-| `GET /design/human-interface-guidelines` | HIG table of contents |
-| `GET /design/human-interface-guidelines/{path}` | HIG pages |
+| `GET /design/human-interface-guidelines` | HIG table of contents. The contents list every section. |
+| `GET /design/human-interface-guidelines/{path}` | HIG pages. Each tab of a tabbed section is rendered, including the Dynamic Type size tables on the Typography page. |
 | `GET /videos/play/{collection}/{id}` | Video transcripts |
 | `GET /external/{full-https-url}` | External DocC documentation |
 | `GET /SKILL.md` | Agent skill describing the HTTP service |
@@ -203,7 +203,7 @@ npx @mehmetbaykar/swift-developer-docs-mcp serve --port 8080
 | `GET /.well-known/api-catalog` | RFC 9727 API catalog |
 | `GET /.well-known/agent-skills/index.json` | agentskills.io discovery index |
 
-Documentation endpoints return `text/markdown` by default. Set `Accept: application/json` for JSON. Responses include `ETag`, `Cache-Control`, and `Content-Location` headers. `GET /` returns HTML unless `Accept: text/markdown` is sent. Run the binary without a subcommand to start the MCP server over stdio.
+Documentation endpoints return `text/markdown` by default. Set `Accept: application/json` for JSON. Responses include `ETag`, `Cache-Control`, and `Content-Location` headers. `GET /documentation/{path}` sets `Content-Location` to the URL of the resolved page. A missing page returns status 404. When more than one symbol matches, the Markdown answer has a `## Did you mean:` list and the JSON answer has a `candidates` array of objects with `title` and `path`. `GET /` returns HTML unless `Accept: text/markdown` is sent. Run the binary without a subcommand to start the MCP server over stdio.
 
 ---
 
@@ -303,9 +303,9 @@ Claude Code, Codex, and Cursor can then use the MCP tools directly when you ask 
 - "Show me the documentation for combine/publisher"
 - "Fetch the HIG page for color"
 - "Get the WWDC 2024 video transcript for session 10133"
-- "Fetch the swift-argument-parser documentation"
+- "Fetch the Swift-DocC Plugin documentation"
 
-With `swift-fast-mcp` `2.4`, tools are authored with the macro-based FastMCP API. `searchAppleDocumentation` returns a typed structured JSON payload containing the query and matching results.
+With `swift-fast-mcp` 2.7.0, tools are authored with the macro-based FastMCP API. `searchAppleDocumentation` returns a typed structured JSON payload containing the query and matching results. The three fetch tools return plain Markdown text. `fetchAppleDocumentation` puts a text block before the Markdown when the page is at another path than the requested path: `No page exists at /documentation/<requested>. This is the page at /documentation/<resolved>.` A failure is a tool error (`isError`). The server instructions say that conformance conditions in Apple's data can be missing or wrong.
 
 ---
 
@@ -352,18 +352,20 @@ Sources/
   AppleDocsCore/                # Core library (no MCP dependency)
     Shared/
       Types.swift               # Codable types (ContentItem, AppleDocJSON, etc.)
-      AppleDocsError.swift      # Unified error enum (10 cases)
+      AppleDocsError.swift      # Unified error enum (11 cases)
       VariantTypes.swift        # LanguageVariant, ImageVariant, SymbolVariant
       Fetcher.swift             # Injectable HTTP client with UA rotation
       ContentRenderer.swift     # Shared rendering (inline, blocks, tables, asides)
+      MarkdownFormatting.swift  # Shared list, code block, table, and callout formatting
       RenderingContext.swift    # Injectable rendering closures
       RenderConfig.swift        # Rendering state (basePath, isExternal, etc.)
       URLUtilities.swift        # Path normalization, URL generation
     Reference/
       ReferenceRenderer.swift   # Reference doc → Markdown
       ReferenceFetcher.swift    # Injectable reference doc fetching
+      DocumentationPageResolver.swift  # Path resolution for missing symbol pages
     Search/
-      SearchParser.swift        # SwiftSoup HTML parsing
+      SearchParser.swift        # JSONL search client; HTML parser is unused by live search
       SearchClient.swift        # Injectable search struct
       SearchTypes.swift         # SearchResult, SearchOptions
     HIG/
@@ -397,6 +399,7 @@ Sources/
       FetchDocumentationTool.swift  # fetchAppleDocumentation
       FetchExternalDocTool.swift    # fetchExternalDocumentation
       FetchVideoTranscriptTool.swift # fetchAppleVideoTranscript
+      ToolExecutionError.swift  # Failure raised as an MCP tool error
     Server/
       ServerApp.swift           # Hummingbird routes + llms.txt
       SecurityHeadersMiddleware.swift
@@ -406,7 +409,19 @@ Sources/
       llms.txt
 Tests/
   AppleDocsCoreTests/
+    CLI/
+    Client/
+    External/
     Fixtures/                   # Real Apple documentation JSON for testing
+    HIG/
+    Integration/
+    MCP/
+    Reference/
+    Search/
+    Shared/
+    Snapshots/
+    Video/
+  SwiftDeveloperDocsMCPTests/
 ```
 
 See [docs/architecture.md](docs/architecture.md) for detailed architecture documentation.
@@ -424,7 +439,7 @@ The test suite covers URL utilities, content rendering, search parsing and forma
 | Package | Purpose |
 |---------|---------|
 | [swift-fast-mcp](https://github.com/mehmetbaykar/swift-fast-mcp) | MCP server framework (stdio transport, tool/resource registration) |
-| [SwiftSoup](https://github.com/scinfu/SwiftSoup) | HTML parsing for search results, video transcripts, robots.txt |
+| [SwiftSoup](https://github.com/scinfu/SwiftSoup) | HTML parsing for video transcripts. `SearchParser.swift` still contains an HTML parser; live search does not use it. |
 | [Hummingbird](https://github.com/hummingbird-project/hummingbird) | HTTP server framework |
 
 ## Acknowledgments

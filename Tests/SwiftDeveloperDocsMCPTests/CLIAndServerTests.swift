@@ -1,3 +1,4 @@
+import AppleDocsCore
 import Crypto
 import Foundation
 import HTTPTypes
@@ -85,6 +86,9 @@ struct CLIAndServerTests {
       #expect(body.contains("## Best Entry Points"))
       #expect(body.contains("## Crawl Policy"))
       #expect(body.contains("The MCP server itself runs over stdio"))
+      #expect(body.contains("`Content-Location` gives the real page"))
+      #expect(body.contains("gives a 404 answer that lists the"))
+      #expect(body.contains("candidate paths."))
     }
 
     @Test("Advertises discovery documents from the homepage Link header")
@@ -129,7 +133,8 @@ struct CLIAndServerTests {
     @Test("Serves an agent-skills index whose digest matches the served skill")
     func skillIndex() async throws {
       let headers: HTTPFields = [.init("X-Forwarded-Host")!: "docs.example.com"]
-      let index = try await testResponse(uri: "/.well-known/agent-skills/index.json", headers: headers)
+      let index = try await testResponse(
+        uri: "/.well-known/agent-skills/index.json", headers: headers)
       let indexBody = index.body.getString(at: 0, length: index.body.readableBytes) ?? ""
       let json = try #require(
         JSONSerialization.jsonObject(with: Data(indexBody.utf8)) as? [String: Any])
@@ -138,7 +143,8 @@ struct CLIAndServerTests {
 
       #expect(index.status == .ok)
       #expect(index.headers[.contentType]?.contains("application/json") == true)
-      #expect(json["$schema"] as? String == "https://schemas.agentskills.io/discovery/0.2.0/schema.json")
+      #expect(
+        json["$schema"] as? String == "https://schemas.agentskills.io/discovery/0.2.0/schema.json")
       #expect(skill["name"] as? String == "apple-docs")
       #expect(skill["type"] as? String == "skill-md")
       #expect(skill["url"] as? String == "/.well-known/agent-skills/apple-docs/SKILL.md")
@@ -172,12 +178,13 @@ struct CLIAndServerTests {
       #expect(interfaces.first?["url"] as? String == "http://docs.example.com")
       #expect(interfaces.first?["protocolVersion"] as? String == "0.3")
       #expect(interfaces.first?["protocolBinding"] as? String == "HTTP+JSON")
-      #expect(skills.map { $0["id"] as? String } == [
-        "search-apple-documentation",
-        "fetch-apple-documentation",
-        "fetch-external-documentation",
-        "fetch-apple-video-transcript",
-      ])
+      #expect(
+        skills.map { $0["id"] as? String } == [
+          "search-apple-documentation",
+          "fetch-apple-documentation",
+          "fetch-external-documentation",
+          "fetch-apple-video-transcript",
+        ])
     }
 
     @Test("Serves an RFC 9727 API catalog")
@@ -236,6 +243,106 @@ struct CLIAndServerTests {
       return try await app.test(.router) { client in
         try await client.execute(uri: uri, method: method, headers: headers)
       }
+    }
+  }
+
+  @Suite("Missing Documentation Pages")
+  struct MissingDocumentationPages {
+    private let candidates = [
+      DocumentationCandidate(
+        path: "swiftui/view/body-swift.property",
+        title: "body"
+      ),
+      DocumentationCandidate(
+        path: "swiftui/view/body-5abc",
+        title: "Body"
+      ),
+    ]
+
+    @Test("Renders Markdown candidates")
+    func markdownCandidates() {
+      #expect(
+        renderDocumentationCandidatesMarkdown(candidates)
+          == "\n## Did you mean:\n\n"
+          + "- [body](/documentation/swiftui/view/body-swift.property)\n"
+          + "- [Body](/documentation/swiftui/view/body-5abc)\n"
+      )
+    }
+
+    @Test("Renders no Markdown candidate section when there are none")
+    func markdownWithoutCandidates() {
+      #expect(renderDocumentationCandidatesMarkdown([]) == "")
+
+      let markdown = renderHTTPErrorMarkdown(
+        title: "Not Found",
+        message: "The requested documentation page does not exist: /documentation/missing",
+        candidates: []
+      )
+      #expect(!markdown.contains("Did you mean"))
+      #expect(markdown.contains("# Not Found"))
+      #expect(
+        markdown.contains(
+          "The requested documentation page does not exist: /documentation/missing"))
+    }
+
+    @Test("Renders JSON candidates")
+    func jsonCandidates() throws {
+      let json = renderHTTPErrorJSON(
+        title: "Not Found",
+        message:
+          "The requested documentation page does not exist: /documentation/swiftui/view/body",
+        candidates: candidates
+      )
+      #expect(json.contains("\"candidates\""))
+      #expect(json.contains("\"title\""))
+      #expect(json.contains("\"path\""))
+      let body = try JSONDecoder().decode(ErrorBody.self, from: Data(json.utf8))
+      #expect(body.error == "Not Found")
+      #expect(
+        body.candidates == [
+          CandidateLink(title: "body", path: "/documentation/swiftui/view/body-swift.property"),
+          CandidateLink(title: "Body", path: "/documentation/swiftui/view/body-5abc"),
+        ]
+      )
+    }
+
+    @Test("Omits the JSON candidates field when there are none")
+    func jsonWithoutCandidates() throws {
+      let json = renderHTTPErrorJSON(
+        title: "Not Found",
+        message: "The requested documentation page does not exist: /documentation/missing",
+        candidates: []
+      )
+      #expect(!json.contains("\"candidates\""))
+      let body = try JSONDecoder().decode(ErrorBody.self, from: Data(json.utf8))
+      #expect(body.candidates == nil)
+    }
+
+    @Test("Maps documentationNotFound to 404")
+    func documentationNotFoundIs404() {
+      let missing = AppleDocsError.documentationNotFound(
+        url: "https://developer.apple.com/documentation/missing",
+        candidates: []
+      )
+      #expect(fetchFailure(for: missing, path: "/documentation/missing").status == .notFound)
+
+      let ambiguous = AppleDocsError.documentationNotFound(
+        url: "https://developer.apple.com/documentation/swiftui/view/body.json",
+        candidates: candidates
+      )
+      #expect(
+        fetchFailure(for: ambiguous, path: "/documentation/swiftui/view/body").status == .notFound)
+    }
+
+    private struct CandidateLink: Decodable, Equatable {
+      let title: String
+      let path: String
+    }
+
+    private struct ErrorBody: Decodable {
+      let error: String
+      let message: String
+      let candidates: [CandidateLink]?
     }
   }
 }

@@ -24,23 +24,13 @@ public struct ReferenceRenderer: Sendable {
     }
 
     if let platforms = jsonData.metadata?.platforms, !platforms.isEmpty {
-      let platformText = platforms.map { p in
-        "\(p.name) \(p.introducedAt)+\(p.beta == true ? " Beta" : "")"
-      }.joined(separator: ", ")
-      markdown += "**Available on:** \(platformText)\n\n"
+      markdown += "**Available on:** \(ContentRenderer.formatPlatforms(platforms))\n\n"
     }
 
-    if let abstract = jsonData.abstract {
-      let abstractText =
-        abstract
-        .filter { $0.type == "text" }
-        .compactMap { $0.text }
-        .joined()
-      if !abstractText.trimmingCharacters(in: .whitespaces).isEmpty {
-        markdown += "> \(abstractText)\n\n"
-      }
-    }
+    markdown += ContentRenderer.renderAbstractQuote(
+      jsonData.abstract, references: jsonData.references)
 
+    markdown += ContentRenderer.renderLanguageNotice(jsonData)
     markdown += renderDeprecationNotice(jsonData, references: jsonData.references)
 
     if let primarySections = jsonData.primaryContentSections {
@@ -78,20 +68,13 @@ public struct ReferenceRenderer: Sendable {
     }
 
     if let topics = jsonData.topicSections {
-      markdown += renderTopicSections(
+      markdown += ContentRenderer.renderTopicSections(
         topics, variants: jsonData.variants, refs: jsonData.references)
     }
 
-    if let swiftItems = jsonData.interfaceLanguages?.swift,
-      let first = swiftItems.first,
-      let children = first.children
-    {
-      let indexItems = children.map { swiftItemToIndexItem($0) }
-      markdown += renderIndexContent(indexItems)
-    }
-
     if let seeAlso = jsonData.seeAlsoSections {
-      markdown += renderSeeAlso(seeAlso, variants: jsonData.variants, refs: jsonData.references)
+      markdown += ContentRenderer.renderSeeAlso(
+        seeAlso, variants: jsonData.variants, refs: jsonData.references)
     }
 
     markdown = markdown.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -106,16 +89,6 @@ public struct ReferenceRenderer: Sendable {
 
   // MARK: - Private Helpers
 
-  private static func swiftItemToIndexItem(_ item: SwiftInterfaceItem) -> IndexContentItem {
-    IndexContentItem(
-      type: item.type,
-      title: item.title,
-      path: item.path,
-      beta: item.beta,
-      children: item.children?.map { swiftItemToIndexItem($0) }
-    )
-  }
-
   static func generateFrontMatter(_ data: AppleDocJSON, sourceURL: String) -> String {
     var lines: [String] = []
 
@@ -123,17 +96,11 @@ public struct ReferenceRenderer: Sendable {
       let cleanTitle = title.replacingOccurrences(of: "| Apple Developer Documentation", with: "")
         .trimmingCharacters(in: .whitespaces)
       lines.append("title: \(cleanTitle)")
-    } else if let swiftTitle = data.interfaceLanguages?.swift?.first?.title {
-      lines.append("title: \(swiftTitle)")
     }
 
     if let abstract = data.abstract {
-      let description =
-        abstract
-        .filter { $0.type == "text" }
-        .compactMap { $0.text }
-        .joined()
-        .trimmingCharacters(in: .whitespaces)
+      let description = ContentRenderer.renderPlainText(abstract, references: data.references)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
       if !description.isEmpty {
         lines.append("description: \(description)")
       }
@@ -190,12 +157,14 @@ public struct ReferenceRenderer: Sendable {
     return markdown
   }
 
-  static func renderDeprecationNotice(_ data: AppleDocJSON, references: [String: ContentItem]?)
-    -> String
-  {
-    guard let body = deprecationNoticeBody(data, references: references) else { return "" }
-    return ContentRenderer.formatCallout(
-      "WARNING", content: body, lead: ContentRenderer.deprecatedLead)
+  static func renderDeprecationNotice(
+    _ data: AppleDocJSON, references: [String: ContentItem]?, externalOrigin: String? = nil
+  ) -> String {
+    guard
+      let body = deprecationNoticeBody(
+        data, references: references, externalOrigin: externalOrigin)
+    else { return "" }
+    return MarkdownFormatting.formatCallout(type: "WARNING", content: body, lead: "**Deprecated**")
   }
 
   static func isSymbolDeprecated(_ data: AppleDocJSON) -> Bool {
@@ -203,11 +172,11 @@ public struct ReferenceRenderer: Sendable {
   }
 
   private static func deprecationNoticeBody(
-    _ data: AppleDocJSON, references: [String: ContentItem]?
+    _ data: AppleDocJSON, references: [String: ContentItem]?, externalOrigin: String? = nil
   ) -> String? {
     if let summary = data.deprecationSummary, !summary.isEmpty {
       let rendered = ContentRenderer.renderContentArray(
-        summary, references: references
+        summary, references: references, externalOrigin: externalOrigin
       ).trimmingCharacters(in: .whitespacesAndNewlines)
       if !rendered.isEmpty { return rendered }
     }
@@ -297,7 +266,7 @@ public struct ReferenceRenderer: Sendable {
     ContentRenderer.mapAsideStyleToCallout(style)
   }
 
-  // MARK: - Relationship / Topic / SeeAlso / Index (reference-specific)
+  // MARK: - Relationships
 
   static func renderRelationships(
     _ rels: [ContentItem], variants: [Variant]?, refs: [String: ContentItem]?
@@ -305,40 +274,4 @@ public struct ReferenceRenderer: Sendable {
     ContentRenderer.renderRelationships(rels, variants: variants, refs: refs)
   }
 
-  static func renderTopicSections(
-    _ topics: [TopicSection], variants: [Variant]?, refs: [String: ContentItem]?
-  ) -> String {
-    ContentRenderer.renderTopicSections(topics, variants: variants, references: refs)
-  }
-
-  static func renderIndexContent(_ children: [IndexContentItem]) -> String {
-    renderIndexContentWithIndent(children, headingLevel: 2)
-  }
-
-  static func renderIndexContentWithIndent(_ children: [IndexContentItem], headingLevel: Int)
-    -> String
-  {
-    var markdown = ""
-    for (i, child) in children.enumerated() {
-      if child.type == "groupMarker" {
-        if i > 0 { markdown += "\n" }
-        let hashes = String(repeating: "#", count: min(headingLevel, 6))
-        markdown += "\(hashes) \(child.title ?? "")\n\n"
-      } else if let path = child.path, let title = child.title {
-        let beta = child.beta == true ? " **Beta**" : ""
-        markdown += "- [\(title)](\(path))\(beta)\n"
-        if let nestedChildren = child.children {
-          markdown += "\n"
-          markdown += renderIndexContentWithIndent(nestedChildren, headingLevel: headingLevel + 1)
-        }
-      }
-    }
-    return markdown
-  }
-
-  static func renderSeeAlso(
-    _ sections: [SeeAlsoSection], variants: [Variant]?, refs: [String: ContentItem]?
-  ) -> String {
-    ContentRenderer.renderSeeAlso(sections, variants: variants, references: refs)
-  }
 }

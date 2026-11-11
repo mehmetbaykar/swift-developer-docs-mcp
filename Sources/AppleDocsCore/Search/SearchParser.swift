@@ -128,8 +128,9 @@ public struct AppleDocsSearcher: Sendable {
     var items: [Any] = []
     var streamedSearch = ""
 
-    for line in payload.split(whereSeparator: \.isNewline) {
-      let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+    for line in payload.unicodeScalars.split(separator: "\n") {
+      let trimmed = String(String.UnicodeScalarView(line)).trimmingCharacters(
+        in: .whitespacesAndNewlines)
       guard !trimmed.isEmpty else { continue }
 
       guard let event = try parseJSON(trimmed) as? [String: Any] else { continue }

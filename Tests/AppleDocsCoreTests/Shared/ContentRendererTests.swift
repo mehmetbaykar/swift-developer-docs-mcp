@@ -971,6 +971,278 @@ struct ContentRendererTests {
     }
   }
 
+  @Suite("Nested Markdown")
+  struct NestedMarkdown {
+    @Test("Indents nested unordered lists under their parent item")
+    func nestedUnorderedList() {
+      let items = [
+        ContentItem(
+          type: "unorderedList",
+          items: [
+            ContentItem(content: [
+              ContentItem(
+                type: "paragraph",
+                inlineContent: [
+                  ContentItem(
+                    text: "This release removes support for the following deprecated ",
+                    type: "text"),
+                  ContentItem(type: "codeVoice", code: .single("NSPersistentStore")),
+                  ContentItem(text: " option keys:", type: "text"),
+                ]),
+              ContentItem(
+                type: "unorderedList",
+                items: [
+                  ContentItem(content: [
+                    ContentItem(
+                      type: "paragraph",
+                      inlineContent: [
+                        ContentItem(
+                          type: "codeVoice",
+                          code: .single("NSPersistentStoreUbiquitousContentNameKey"))
+                      ])
+                  ]),
+                  ContentItem(content: [
+                    ContentItem(
+                      type: "paragraph",
+                      inlineContent: [
+                        ContentItem(
+                          type: "codeVoice",
+                          code: .single("NSPersistentStoreUbiquitousContentURLKey"))
+                      ])
+                  ]),
+                ]),
+            ])
+          ])
+      ]
+      let result = ContentRenderer.renderContentArray(items, references: nil)
+      #expect(
+        result.contains(
+          [
+            "- This release removes support for the following deprecated `NSPersistentStore` option keys:",
+            "  - `NSPersistentStoreUbiquitousContentNameKey`",
+            "  - `NSPersistentStoreUbiquitousContentURLKey`",
+          ].joined(separator: "\n"))
+      )
+    }
+
+    @Test("Preserves paragraph breaks inside list items")
+    func paragraphBreaksInsideListItem() {
+      let items = [
+        ContentItem(
+          type: "unorderedList",
+          items: [
+            ContentItem(content: [
+              ContentItem(
+                type: "paragraph",
+                inlineContent: [ContentItem(text: "First paragraph.", type: "text")]),
+              ContentItem(
+                type: "paragraph",
+                inlineContent: [ContentItem(text: "Second paragraph.", type: "text")]),
+            ])
+          ])
+      ]
+      let result = ContentRenderer.renderContentArray(items, references: nil)
+      #expect(result.contains("- First paragraph.\n\n  Second paragraph."))
+    }
+
+    @Test("Indents nested content under ordered list markers")
+    func orderedNestedList() {
+      let items = [
+        ContentItem(
+          type: "orderedList",
+          items: [
+            ContentItem(content: [
+              ContentItem(
+                type: "paragraph",
+                inlineContent: [ContentItem(text: "First paragraph.", type: "text")]),
+              ContentItem(
+                type: "paragraph",
+                inlineContent: [ContentItem(text: "Second paragraph.", type: "text")]),
+              ContentItem(
+                type: "unorderedList",
+                items: [
+                  ContentItem(content: [
+                    ContentItem(
+                      type: "paragraph",
+                      inlineContent: [ContentItem(text: "Nested item", type: "text")])
+                  ])
+                ]),
+            ])
+          ])
+      ]
+      let result = ContentRenderer.renderContentArray(items, references: nil)
+      #expect(
+        result.contains(
+          ["1. First paragraph.", "", "   Second paragraph.", "   - Nested item"].joined(
+            separator: "\n"))
+      )
+    }
+
+    @Test("Indents an unordered list nested three levels inside an ordered list")
+    func threeLevelNestedList() {
+      let items = [
+        ContentItem(
+          type: "orderedList",
+          items: [
+            ContentItem(content: [
+              ContentItem(
+                type: "paragraph",
+                inlineContent: [ContentItem(text: "Level 1", type: "text")]),
+              ContentItem(
+                type: "unorderedList",
+                items: [
+                  ContentItem(content: [
+                    ContentItem(
+                      type: "paragraph",
+                      inlineContent: [ContentItem(text: "Level 2", type: "text")]),
+                    ContentItem(
+                      type: "unorderedList",
+                      items: [
+                        ContentItem(content: [
+                          ContentItem(
+                            type: "paragraph",
+                            inlineContent: [ContentItem(text: "Level 3", type: "text")])
+                        ])
+                      ]),
+                  ])
+                ]),
+            ])
+          ])
+      ]
+      let result = ContentRenderer.renderContentArray(items, references: nil)
+      #expect(result == "1. Level 1\n   - Level 2\n     - Level 3\n\n")
+    }
+
+    @Test("Indents a code block inside a list item")
+    func codeBlockInListItem() {
+      let items = [
+        ContentItem(
+          type: "unorderedList",
+          items: [
+            ContentItem(content: [
+              ContentItem(
+                type: "paragraph",
+                inlineContent: [ContentItem(text: "See:", type: "text")]),
+              ContentItem(type: "codeListing", code: .single("let x = 1"), syntax: "swift"),
+            ])
+          ])
+      ]
+      let result = ContentRenderer.renderContentArray(items, references: nil)
+      #expect(result == "- See:\n\n  ```swift\n  let x = 1\n  ```\n\n")
+    }
+
+    @Test("Escapes a pipe and a line break inside a table cell")
+    func tablePipeAndLineBreak() {
+      let item = ContentItem(
+        type: "table",
+        rows: [
+          [
+            [
+              ContentItem(
+                type: "paragraph",
+                inlineContent: [ContentItem(text: "a|b\nnext line", type: "text")])
+            ]
+          ]
+        ]
+      )
+      let result = ContentRenderer.renderTable(item, references: nil)
+      #expect(result == "| a\\|b next line |\n\n")
+    }
+
+    @Test("Quotes each line of a two-paragraph callout")
+    func calloutTwoParagraphs() {
+      let item = ContentItem(
+        type: "aside",
+        content: [
+          ContentItem(
+            type: "paragraph",
+            inlineContent: [ContentItem(text: "First.", type: "text")]),
+          ContentItem(
+            type: "paragraph",
+            inlineContent: [ContentItem(text: "Second.", type: "text")]),
+        ],
+        style: "note")
+      let result = ContentRenderer.renderAside(item, references: nil)
+      #expect(result == "> [!NOTE]\n> First.\n>\n> Second.\n\n")
+    }
+
+    @Test("Keeps the deprecated lead ahead of aside content")
+    func calloutWithLead() {
+      let item = ContentItem(
+        type: "aside",
+        content: [
+          ContentItem(
+            type: "paragraph",
+            inlineContent: [ContentItem(text: "Body.", type: "text")])
+        ],
+        style: "deprecated")
+      let result = ContentRenderer.renderAside(item, references: nil)
+      #expect(result == "> [!WARNING]\n> **Deprecated**\n>\n> Body.\n\n")
+    }
+
+    @Test("Renders an empty aside as nothing")
+    func emptyCallout() {
+      let item = ContentItem(type: "aside", style: "note")
+      #expect(ContentRenderer.renderAside(item, references: nil) == "")
+    }
+
+    @Test("Keeps rendering inline content inside deeply nested blocks")
+    func inlineContentInsideDeepBlocks() {
+      func nestBlocks(_ depth: Int) -> ContentItem {
+        let paragraph = ContentItem(
+          type: "paragraph",
+          inlineContent: [ContentItem(text: "Level \(depth) text", type: "text")]
+        )
+        if depth <= 0 {
+          return ContentItem(content: [paragraph])
+        }
+        return ContentItem(content: [
+          paragraph,
+          ContentItem(type: "unorderedList", items: [nestBlocks(depth - 1)]),
+        ])
+      }
+
+      let items = [
+        ContentItem(type: "unorderedList", items: [nestBlocks(30)])
+      ]
+      let result = ContentRenderer.renderContentArray(items, references: nil)
+      #expect(!result.contains("[Inline content too deeply nested]"))
+      #expect(result.contains("Level 0 text"))
+      #expect(result.contains("Level 30 text"))
+    }
+  }
+
+  @Suite("Link Blocks")
+  struct LinkBlocks {
+    @Test("Uses the reference title for the items of a links block")
+    func linksUseReferenceTitles() {
+      let sample =
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Landmarks-Building-an-app-with-Liquid-Glass"
+      let symbol = "doc://com.apple.SwiftUI/documentation/SwiftUI/View"
+      let missing = "doc://com.apple.SwiftUI/documentation/SwiftUI/Some-Missing-Page"
+      let references: [String: ContentItem] = [
+        sample: ContentItem(
+          type: "topic", title: "Landmarks: Building an app with Liquid Glass",
+          url: "/documentation/swiftui/landmarks-building-an-app-with-liquid-glass",
+          role: "sampleCode"),
+        symbol: ContentItem(
+          type: "topic", title: "View", url: "/documentation/swiftui/view", role: "symbol"),
+      ]
+      let item = ContentItem(type: "links", itemIdentifiers: [sample, symbol, missing])
+
+      let result = ContentRenderer.renderContentArray([item], references: references)
+
+      let missingTitle = ContentRenderer.extractTitleFromIdentifier(missing)
+      let missingURL = ContentRenderer.convertIdentifierToURL(missing, references: references)
+      let expected = [
+        "- [Landmarks: Building an app with Liquid Glass](/documentation/swiftui/landmarks-building-an-app-with-liquid-glass)",
+        "- [`View`](/documentation/swiftui/view)",
+        "- [\(missingTitle)](\(missingURL))",
+      ].joined(separator: "\n")
+      #expect(result == expected + "\n\n")
+    }
+  }
+
   @Suite("Link Title Resolution")
   struct LinkTitleResolution {
     private func paragraph(_ inline: [ContentItem]) -> [ContentItem] {
@@ -997,13 +1269,15 @@ struct ContentRendererTests {
 
     @Test("Inline links preserve code spans from titleInlineContent")
     func inlineLinkPreservesCodeSpans() {
-      let id = "doc://com.apple.storekit/documentation/storekit/transaction/revocationtype-swift.property"
+      let id =
+        "doc://com.apple.storekit/documentation/storekit/transaction/revocationtype-swift.property"
       let refs = [
         id: ContentItem(
           title: "revocationType",
-          url: "https://developer.apple.com/documentation/storekit/transaction/revocationtype-swift.property",
-          role: "symbol",
-          titleInlineContent: [ContentItem(type: "codeVoice", code: .single("revocationType"))])
+          titleInlineContent: [ContentItem(type: "codeVoice", code: .single("revocationType"))],
+          url:
+            "https://developer.apple.com/documentation/storekit/transaction/revocationtype-swift.property",
+          role: "symbol")
       ]
       let result = ContentRenderer.renderContentArray(
         paragraph([ContentItem(type: "reference", identifier: id)]), references: refs)
@@ -1016,13 +1290,16 @@ struct ContentRendererTests {
 
     @Test("Symbol titles are backticked when DocC omits titleInlineContent")
     func symbolTitlesAreBackticked() {
-      let symbolID = "doc://com.apple.metal/documentation/Metal/MTLAccelerationStructure/gpuResourceID"
+      let symbolID =
+        "doc://com.apple.metal/documentation/Metal/MTLAccelerationStructure/gpuResourceID"
       let moduleID = "doc://com.apple.storekit/documentation/StoreKit"
       let refs = [
         symbolID: ContentItem(
-          title: "gpuResourceID", url: "/documentation/Metal/MTLAccelerationStructure/gpuResourceID",
+          title: "gpuResourceID",
+          url: "/documentation/Metal/MTLAccelerationStructure/gpuResourceID",
           role: "symbol"),
-        moduleID: ContentItem(title: "StoreKit", url: "/documentation/StoreKit", role: "collection"),
+        moduleID: ContentItem(
+          title: "StoreKit", url: "/documentation/StoreKit", role: "collection"),
       ]
       let result = ContentRenderer.renderContentArray(
         paragraph([
@@ -1032,7 +1309,8 @@ struct ContentRendererTests {
         ]), references: refs)
 
       #expect(
-        result.contains("[`gpuResourceID`](/documentation/Metal/MTLAccelerationStructure/gpuResourceID)"))
+        result.contains(
+          "[`gpuResourceID`](/documentation/Metal/MTLAccelerationStructure/gpuResourceID)"))
       #expect(result.contains("[StoreKit](/documentation/StoreKit)"))
       #expect(!result.contains("[`StoreKit`]"))
     }
@@ -1040,7 +1318,9 @@ struct ContentRendererTests {
     @Test("Explicit link titles win over the references map")
     func explicitTitleWins() {
       let id = "doc://x/documentation/Swift/Array"
-      let refs = [id: ContentItem(title: "Array", url: "/documentation/Swift/Array", role: "symbol")]
+      let refs = [
+        id: ContentItem(title: "Array", url: "/documentation/Swift/Array", role: "symbol")
+      ]
       let result = ContentRenderer.renderInlineContent(
         [ContentItem(type: "reference", title: "the array type", identifier: id)], references: refs)
       #expect(result == "[the array type](/documentation/Swift/Array)")
@@ -1052,15 +1332,15 @@ struct ContentRendererTests {
       let refs = [
         id: ContentItem(
           title: "HStack", url: "/documentation/SwiftUI/HStack",
-          abstract: [TextFragment(text: "A horizontal stack.", type: "text")], role: "symbol")
+          abstract: [ContentItem(text: "A horizontal stack.", type: "text")], role: "symbol")
       ]
 
       let topics = ContentRenderer.renderTopicSections(
-        [TopicSection(title: "Stacks", identifiers: [id])], variants: nil, references: refs)
+        [TopicSection(title: "Stacks", identifiers: [id])], variants: nil, refs: refs)
       #expect(topics.contains("- [`HStack`](/documentation/SwiftUI/HStack) A horizontal stack."))
 
       let seeAlso = ContentRenderer.renderSeeAlso(
-        [SeeAlsoSection(title: "Related", identifiers: [id])], variants: nil, references: refs)
+        [SeeAlsoSection(title: "Related", identifiers: [id])], variants: nil, refs: refs)
       #expect(seeAlso.contains("- [`HStack`](/documentation/SwiftUI/HStack)\n"))
 
       let relationships = ContentRenderer.renderRelationships(
@@ -1075,7 +1355,8 @@ struct ContentRendererTests {
         "doc://x/documentation/Swift/DataRaceSafety": ContentItem(
           title: "Data Race Safety", url: "/documentation/Swift/DataRaceSafety", role: "article"),
         "doc://x/documentation/Swift/MigrationStrategy": ContentItem(
-          title: "Migration Strategy", url: "/documentation/Swift/MigrationStrategy", role: "article"),
+          title: "Migration Strategy", url: "/documentation/Swift/MigrationStrategy",
+          role: "article"),
         "doc://x/documentation/Swift/RuntimeBehavior": ContentItem(
           title: "Runtime Behavior", url: "/documentation/Swift/RuntimeBehavior", role: "article"),
       ]
@@ -1091,7 +1372,7 @@ struct ContentRendererTests {
           identifiers: ["doc://x/documentation/Swift/RuntimeBehavior"]),
       ]
 
-      let result = ContentRenderer.renderTopicSections(topics, variants: nil, references: refs)
+      let result = ContentRenderer.renderTopicSections(topics, variants: nil, refs: refs)
 
       #expect(result.contains("[Data Race Safety]"))
       #expect(result.contains("[Migration Strategy]"))
@@ -1105,10 +1386,11 @@ struct ContentRendererTests {
       let id = "doc://x/documentation/UIKit/UIWebView"
       let refs = [
         id: ContentItem(
-          title: "UIWebView", url: "/documentation/UIKit/UIWebView", role: "symbol", deprecated: true)
+          title: "UIWebView", url: "/documentation/UIKit/UIWebView", role: "symbol",
+          deprecated: true)
       ]
       let result = ContentRenderer.renderTopicSections(
-        [TopicSection(title: "Views", identifiers: [id])], variants: nil, references: refs)
+        [TopicSection(title: "Views", identifiers: [id])], variants: nil, refs: refs)
       #expect(result.contains("- [`UIWebView`](/documentation/UIKit/UIWebView) *(Deprecated)*"))
     }
 
@@ -1148,7 +1430,8 @@ struct ContentRendererTests {
     }
 
     private func code(_ string: String) -> ContentItem {
-      ContentItem(type: "paragraph", inlineContent: [ContentItem(type: "codeVoice", code: .single(string))])
+      ContentItem(
+        type: "paragraph", inlineContent: [ContentItem(type: "codeVoice", code: .single(string))])
     }
 
     @Test("Indents nested lists under their parent item")
@@ -1233,8 +1516,8 @@ struct ContentRendererTests {
 
     @Test("Callouts quote blank lines without trailing whitespace")
     func calloutBlankLines() {
-      let result = ContentRenderer.formatCallout(
-        "WARNING", content: "Use the new API.", lead: "**Deprecated**")
+      let result = AppleDocsCore.MarkdownFormatting.formatCallout(
+        type: "WARNING", content: "Use the new API.", lead: "**Deprecated**")
       #expect(result == "> [!WARNING]\n> **Deprecated**\n>\n> Use the new API.\n\n")
     }
 

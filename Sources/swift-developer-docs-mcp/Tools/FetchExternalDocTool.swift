@@ -2,11 +2,15 @@ import AppleDocsCore
 import FastMCP
 import Foundation
 
-@Tool("Fetch external Swift-DocC documentation by absolute https URL and return as markdown")
+@Tool(
+  "Fetch a page from a public Swift-DocC documentation site (https://www.swift.org/documentation/docc/) by absolute HTTPS URL and return it as Markdown"
+)
 struct FetchExternalDocumentationTool {
   @Generable
   struct Arguments {
-    @Parameter("Absolute HTTPS URL for external Swift-DocC documentation")
+    @Parameter(
+      "External Swift-DocC URL (e.g., 'https://swiftlang.github.io/swift-docc-plugin/documentation/swiftdoccplugin')"
+    )
     var url: String
   }
 
@@ -17,5 +21,10 @@ struct FetchExternalDocumentationTool {
       throw ToolExecutionError(
         "Error fetching external content for \"\(arguments.url)\": \(error.localizedDescription)")
     }
+  }
+
+  func makeOutputSegments(from arguments: GeneratedContent) async throws -> [Transcript.Segment] {
+    let markdown = try await execute(try Arguments(arguments))
+    return [.text(.init(content: markdown))]
   }
 }

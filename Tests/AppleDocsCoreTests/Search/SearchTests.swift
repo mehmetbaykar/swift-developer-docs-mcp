@@ -15,15 +15,18 @@ struct SearchTests {
       {"results":[{"excerpt":"An interface for describing the evolution of a schema","value":{"metadata":{"title":"SchemaMigrationPlan","permalink":"https://developer.apple.com/documentation/swiftdata/schemamigrationplan","description":"An interface for describing the evolution of a schema and how to migrate between specific versions.","hierarchy":"SwiftData > SchemaMigrationPlan","kind":"symbol","metadataKind":"documentation"},"origin":"documentation"}},{"excerpt":"Learn how to use schema macros","value":{"metadata":{"titles":["Model your schema with SwiftData"],"permalinks":["https://developer.apple.com/videos/play/wwdc2023/10195"],"descriptions":["Learn how to use schema macros and migration plans with SwiftData."],"projectNames":["WWDC23"],"itemTypes":["Video"],"deliveryLanguageCodes":["eng"],"metadataKind":"developer"},"origin":"developerWWDC"}},{"excerpt":"","value":{"metadata":{"title":"Swift.org - The Swift Programming Language","sourceURL":"https://www.swift.org/documentation/","description":"Documentation for the Swift programming language.","metadataKind":"webPage"},"origin":"swift"}}]}
       """
 
-    let midpoint = streamedSearch.index(streamedSearch.startIndex, offsetBy: streamedSearch.count / 2)
+    let midpoint = streamedSearch.index(
+      streamedSearch.startIndex, offsetBy: streamedSearch.count / 2)
     let head = String(streamedSearch[..<midpoint])
     let tail = String(streamedSearch[midpoint...])
 
     func diffEvent(append: String, removeLast: Int) -> String {
-      let escaped = append
+      let escaped =
+        append
         .replacingOccurrences(of: "\\", with: "\\\\")
         .replacingOccurrences(of: "\"", with: "\\\"")
-      return "{\"kind\":\"search\",\"diff\":{\"append\":\"\(escaped)\",\"removeLast\":\(removeLast)}}"
+      return
+        "{\"kind\":\"search\",\"diff\":{\"append\":\"\(escaped)\",\"removeLast\":\(removeLast)}}"
     }
 
     return [
@@ -240,7 +243,8 @@ struct SearchTests {
     #expect(results[2].title == "Model your schema with SwiftData")
     #expect(results[2].url == "https://developer.apple.com/videos/play/wwdc2023/10195")
     #expect(
-      results[2].description == "Learn how to use schema macros and migration plans with SwiftData.")
+      results[2].description == "Learn how to use schema macros and migration plans with SwiftData."
+    )
     #expect(results[2].breadcrumbs == ["WWDC23"])
     #expect(results[2].tags == ["Video", "eng"])
     #expect(results[2].type == "video")
@@ -304,6 +308,38 @@ struct SearchTests {
     #expect(body["includedResponses"] as? [String] == ["quickSearch", "search"])
   }
 
+  @Test("Splits JSONL lines only at line feeds")
+  func splitsLinesOnlyAtLineFeeds() throws {
+    let payload =
+      "{\"kind\":\"quickSearch\",\"response\":{\"results\":[{\"metadata\":{\"title\":\"A\u{2028}B\",\"permalink\":\"https://example.com/a\",\"metadataKind\":\"documentation\"}}]}}\r\n{\"kind\":\"quickSearchFinished\"}\n"
+
+    let results = try AppleDocsSearcher.parseSearchEvents(payload)
+
+    #expect(results.count == 1)
+    #expect(results.first?.title == "A\u{2028}B")
+  }
+
+  @Test("removeLast counts UTF-16 code units")
+  func removeLastCountsUTF16CodeUnits() throws {
+    let marked = "e\u{0301}"
+    #expect(marked.count == 1)
+    #expect(marked.utf16.count == 2)
+
+    let prefix = "{\"results\":[{\"metadata\":{\"title\":\"\(marked)"
+    let suffix = "\",\"permalink\":\"https://example.com/a\",\"metadataKind\":\"documentation\"}}]}"
+    let payload = """
+      \(try searchDiffEvent(append: prefix, removeLast: 0))
+      \(try searchDiffEvent(append: suffix, removeLast: 1))
+      """
+
+    let results = try AppleDocsSearcher.parseSearchEvents(payload)
+
+    #expect(results.count == 1)
+    #expect(results[0].title == "e")
+    #expect(results[0].url == "https://example.com/a")
+    #expect(results[0].type == "documentation")
+  }
+
   @Test("Maps system locales to Apple's accepted target result locales")
   func resolvesTargetResultLocale() {
     #expect(AppleDocsSearcher.resolveTargetResultLocale("en-US-u-hc-h23") == "en")
@@ -316,5 +352,14 @@ struct SearchTests {
     #expect(AppleDocsSearcher.resolveTargetResultLocale("nl-NL") == "en")
     #expect(AppleDocsSearcher.resolveTargetResultLocale("C") == "en")
     #expect(AppleDocsSearcher.resolveTargetResultLocale("") == "en")
+  }
+
+  private func searchDiffEvent(append: String, removeLast: Int) throws -> String {
+    let object: [String: Any] = [
+      "kind": "search",
+      "diff": ["append": append, "removeLast": removeLast],
+    ]
+    let data = try JSONSerialization.data(withJSONObject: object)
+    return String(decoding: data, as: UTF8.self)
   }
 }
