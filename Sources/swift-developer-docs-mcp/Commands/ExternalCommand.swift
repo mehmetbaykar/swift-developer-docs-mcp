@@ -20,7 +20,7 @@ struct ExternalCommand: CLICommand {
       printToStdErr("")
       printToStdErr("Examples:")
       printToStdErr(
-        "  external https://apple.github.io/swift-argument-parser/documentation/argumentparser")
+        "  external https://swiftlang.github.io/swift-docc-plugin/documentation/swiftdoccplugin")
       Foundation.exit(1)
     }
 

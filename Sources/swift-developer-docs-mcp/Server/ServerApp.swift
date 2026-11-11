@@ -127,14 +127,11 @@ struct ServerApp {
       }
 
       do {
-        let markdown = try await AppleDocsActions.fetch(path: path)
-        let sourceURL = URLUtilities.generateAppleDocURL(
-          URLUtilities.normalizeDocumentationPath(path)
-        )
+        let document = try await AppleDocsActions.fetchDocument(path: path)
 
         return markdownResponse(
-          markdown: markdown,
-          sourceURL: sourceURL,
+          markdown: document.markdown,
+          sourceURL: document.sourceURL,
           request: request
         )
       } catch {
@@ -358,35 +355,12 @@ struct ServerApp {
   }
 
   private func handleFetchError(_ error: Error, path: String, request: Request) -> Response {
-    if let docsError = error as? AppleDocsError {
-      switch docsError {
-      case .notFound:
-        return errorResponse(
-          request: request,
-          status: .notFound,
-          message: "The requested documentation page does not exist: \(path)"
-        )
-      case .insufficientContent:
-        return errorResponse(
-          request: request,
-          status: .badGateway,
-          message: "The documentation page loaded but contained insufficient content."
-        )
-      case .invalidPath, .invalidURL:
-        return errorResponse(
-          request: request,
-          status: .badRequest,
-          message: docsError.localizedDescription
-        )
-      default:
-        break
-      }
-    }
-
+    let failure = fetchFailure(for: error, path: path)
     return errorResponse(
       request: request,
-      status: .internalServerError,
-      message: "Error fetching content: \(error.localizedDescription)"
+      status: failure.status,
+      message: failure.message,
+      candidates: failure.candidates
     )
   }
 
@@ -550,6 +524,10 @@ struct ServerApp {
     ## Notes For Agents
 
     - Prefer `/search` before fetching a path when the exact documentation slug is unknown.
+    - A documentation path that omits a signature or a disambiguation suffix opens the
+      page when exactly one symbol matches. `Content-Location` gives the real page, and
+      a path that matches more than one symbol gives a 404 answer that lists the
+      candidate paths.
     - Use `/external/` only for public HTTPS Swift-DocC sites. Private networks and
       disallowed robots targets are blocked.
     - This HTTP surface is REST-oriented. The MCP server itself runs over stdio when
@@ -646,47 +624,165 @@ struct ServerApp {
 private func errorResponse(
   request: Request? = nil,
   status: HTTPResponse.Status,
-  message: String
+  message: String,
+  candidates: [DocumentationCandidate] = []
 ) -> Response {
   let wantsJSON = request?.headers[.accept]?.contains("application/json") == true
-  let title: String =
-    switch status.code {
-    case 400: "Bad Request"
-    case 403: "Forbidden"
-    case 404: "Not Found"
-    case 405: "Method Not Allowed"
-    case 406: "Not Acceptable"
-    case 415: "Unsupported Media Type"
-    case 421: "Misdirected Request"
-    case 502: "Bad Gateway"
-    default: "Error"
-    }
-
-  let markdown = """
-    # \(title)
-
-    \(message)
-
-    ---
-      *[swift-developer-docs-mcp](https://github.com/mehmetbaykar/swift-developer-docs-mcp)*
-    """
+  let title = httpErrorTitle(for: status)
 
   if wantsJSON {
-    let payload = ["error": title, "message": message]
-    let data = (try? JSONEncoder().encode(payload)) ?? Data(#"{"error":"Error"}"#.utf8)
-    var buffer = ByteBufferAllocator().buffer(capacity: data.count)
-    buffer.writeBytes(data)
-
+    let json = renderHTTPErrorJSON(title: title, message: message, candidates: candidates)
     return Response(
       status: status,
       headers: [.contentType: "application/json; charset=utf-8"],
-      body: .init(byteBuffer: buffer)
+      body: .init(byteBuffer: .init(string: json))
     )
   }
 
+  let markdown = renderHTTPErrorMarkdown(title: title, message: message, candidates: candidates)
   return Response(
     status: status,
     headers: [.contentType: "text/markdown; charset=utf-8"],
     body: .init(byteBuffer: .init(string: markdown))
   )
+}
+
+struct FetchFailure: Equatable {
+  let status: HTTPResponse.Status
+  let message: String
+  let candidates: [DocumentationCandidate]
+}
+
+func fetchFailure(for error: Error, path: String) -> FetchFailure {
+  guard let docsError = error as? AppleDocsError else {
+    return FetchFailure(
+      status: .internalServerError,
+      message: "Error fetching content: \(error.localizedDescription)",
+      candidates: []
+    )
+  }
+
+  switch docsError {
+  case .documentationNotFound(_, let candidates):
+    return FetchFailure(
+      status: .notFound,
+      message: "The requested documentation page does not exist: \(path)",
+      candidates: candidates
+    )
+  case .notFound:
+    return FetchFailure(
+      status: .notFound,
+      message: "The requested documentation page does not exist: \(path)",
+      candidates: []
+    )
+  case .insufficientContent:
+    return FetchFailure(
+      status: .badGateway,
+      message: "The documentation page loaded but contained insufficient content.",
+      candidates: []
+    )
+  case .invalidPath, .invalidURL:
+    return FetchFailure(
+      status: .badRequest,
+      message: docsError.localizedDescription,
+      candidates: []
+    )
+  default:
+    return FetchFailure(
+      status: .internalServerError,
+      message: "Error fetching content: \(error.localizedDescription)",
+      candidates: []
+    )
+  }
+}
+
+func renderDocumentationCandidatesMarkdown(_ candidates: [DocumentationCandidate]) -> String {
+  guard !candidates.isEmpty else { return "" }
+
+  let list = candidates.map { candidate in
+    "- [\(candidate.title)](/documentation/\(candidate.path))"
+  }.joined(separator: "\n")
+  return "\n## Did you mean:\n\n\(list)\n"
+}
+
+func renderHTTPErrorMarkdown(
+  title: String,
+  message: String,
+  candidates: [DocumentationCandidate]
+) -> String {
+  let candidateSection = renderDocumentationCandidatesMarkdown(candidates)
+  return """
+    # \(title)
+
+    \(message)
+    \(candidateSection)
+    ---
+      *[swift-developer-docs-mcp](https://github.com/mehmetbaykar/swift-developer-docs-mcp)*
+    """
+}
+
+func renderHTTPErrorJSON(
+  title: String,
+  message: String,
+  candidates: [DocumentationCandidate]
+) -> String {
+  let body = HTTPErrorBody(
+    error: title,
+    message: message,
+    candidates: documentationCandidateLinks(candidates)
+  )
+  guard let data = try? JSONEncoder().encode(body),
+    let json = String(data: data, encoding: .utf8)
+  else {
+    return #"{"error":"Error"}"#
+  }
+  return json
+}
+
+private struct DocumentationCandidateLink: Encodable, Equatable {
+  let title: String
+  let path: String
+}
+
+private struct HTTPErrorBody: Encodable {
+  let error: String
+  let message: String
+  let candidates: [DocumentationCandidateLink]
+
+  func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(error, forKey: .error)
+    try container.encode(message, forKey: .message)
+    if !candidates.isEmpty {
+      try container.encode(candidates, forKey: .candidates)
+    }
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case error
+    case message
+    case candidates
+  }
+}
+
+private func documentationCandidateLinks(
+  _ candidates: [DocumentationCandidate]
+) -> [DocumentationCandidateLink] {
+  candidates.map { candidate in
+    DocumentationCandidateLink(title: candidate.title, path: "/documentation/\(candidate.path)")
+  }
+}
+
+private func httpErrorTitle(for status: HTTPResponse.Status) -> String {
+  switch status.code {
+  case 400: "Bad Request"
+  case 403: "Forbidden"
+  case 404: "Not Found"
+  case 405: "Method Not Allowed"
+  case 406: "Not Acceptable"
+  case 415: "Unsupported Media Type"
+  case 421: "Misdirected Request"
+  case 502: "Bad Gateway"
+  default: "Error"
+  }
 }

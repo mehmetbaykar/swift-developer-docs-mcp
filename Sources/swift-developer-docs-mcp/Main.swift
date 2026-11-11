@@ -7,8 +7,13 @@ struct AppleDocsServer {
     let mcpServer = AppleDocsMCPServer()
     let router = CLIRouter(version: mcpServer.version)
 
-    if try await router.route(CommandLine.arguments) {
-      return
+    do {
+      if try await router.route(CommandLine.arguments) {
+        return
+      }
+    } catch {
+      printToStdErr("swift-developer-docs-mcp: \(error.localizedDescription)")
+      Foundation.exit(1)
     }
 
     try await mcpServer.builder(transport: .stdio)
