@@ -6,8 +6,13 @@ public enum URLUtilities: Sendable {
   public static func normalizeDocumentationPath(_ path: String) -> String {
     let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
     if trimmed.isEmpty { return "" }
-    return trimmed.replacingOccurrences(
+    let withoutPrefix = trimmed.replacingOccurrences(
       of: #"^\/?(?:documentation\/?)?"#,
+      with: "",
+      options: .regularExpression
+    )
+    return withoutPrefix.replacingOccurrences(
+      of: #"/+$"#,
       with: "",
       options: .regularExpression
     )

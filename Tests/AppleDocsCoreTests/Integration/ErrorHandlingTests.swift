@@ -121,6 +121,7 @@ struct ErrorHandlingTests {
       case .accessDenied: label = "accessDenied"
       case .robotsBlocked: label = "robotsBlocked"
       case .ssrfBlocked: label = "ssrfBlocked"
+      case .documentationNotFound: label = "documentationNotFound"
       }
       #expect(label == expectedLabel)
     }

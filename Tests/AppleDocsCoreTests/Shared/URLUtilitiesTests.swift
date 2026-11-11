@@ -87,10 +87,13 @@ struct URLUtilitiesTests {
 
     @Test("Handles paths ending with slashes")
     func trailingSlashes() {
-      #expect(URLUtilities.normalizeDocumentationPath("swift/array/") == "swift/array/")
-      #expect(URLUtilities.normalizeDocumentationPath("/swift/array/") == "swift/array/")
+      #expect(URLUtilities.normalizeDocumentationPath("swift/array/") == "swift/array")
+      #expect(URLUtilities.normalizeDocumentationPath("/swift/array//") == "swift/array")
       #expect(
-        URLUtilities.normalizeDocumentationPath("documentation/swift/array/") == "swift/array/")
+        URLUtilities.normalizeDocumentationPath("documentation/swift/array/") == "swift/array")
+      #expect(
+        URLUtilities.normalizeDocumentationPath("swift/array/append(_:)/")
+          == "swift/array/append(_:)")
     }
   }
 

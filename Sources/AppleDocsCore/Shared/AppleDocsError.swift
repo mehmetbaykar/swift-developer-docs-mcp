@@ -8,6 +8,7 @@ public enum AppleDocsError: Error, LocalizedError, Sendable {
   case insufficientContent
   case networkError(underlying: Error)
   case notFound
+  case documentationNotFound(url: String, candidates: [DocumentationCandidate])
   case accessDenied
   case robotsBlocked
   case ssrfBlocked
@@ -28,6 +29,16 @@ public enum AppleDocsError: Error, LocalizedError, Sendable {
       return "Network error: \(underlying.localizedDescription)"
     case .notFound:
       return "Resource not found"
+    case .documentationNotFound(let url, let candidates):
+      let base = "Apple documentation page not found at \(url)"
+      if candidates.isEmpty {
+        return base
+      }
+      let list = candidates.map { candidate in
+        "- \(candidate.title): /documentation/\(candidate.path)"
+      }.joined(separator: "\n")
+      return
+        "\(base)\nThe path matches more than one symbol. Fetch one of these paths:\n\(list)"
     case .accessDenied:
       return "Access denied"
     case .robotsBlocked:

@@ -199,6 +199,20 @@ extension AppleDocsClient {
   )
 }
 
+public struct FetchedDocument: Sendable {
+  public let markdown: String
+  public let requestedPath: String
+  public let path: String
+  public let sourceURL: String
+
+  public init(markdown: String, requestedPath: String, path: String, sourceURL: String) {
+    self.markdown = markdown
+    self.requestedPath = requestedPath
+    self.path = path
+    self.sourceURL = sourceURL
+  }
+}
+
 // MARK: - Legacy static API (backward compatible)
 
 public enum AppleDocsActions {
@@ -237,20 +251,29 @@ public enum AppleDocsActions {
   }
 
   public static func fetch(path: String) async throws -> String {
+    try await fetchDocument(path: path).markdown
+  }
+
+  public static func fetchDocument(path: String) async throws -> FetchedDocument {
     let normalized = URLUtilities.normalizeDocumentationPath(path)
     guard !normalized.isEmpty else {
       throw AppleDocsError.invalidPath
     }
 
-    let sourceURL = URLUtilities.generateAppleDocURL(normalized)
-    let jsonData = try await Fetcher.fetchJSONData(path: normalized)
-    let markdown = DocumentRenderer.renderFromJSON(jsonData, sourceURL: sourceURL)
+    let page = try await Fetcher.fetchDocumentationPage(path: normalized)
+    let sourceURL = URLUtilities.generateAppleDocURL(page.path)
+    let markdown = DocumentRenderer.renderFromJSON(page.data, sourceURL: sourceURL)
 
     if markdown.count < DocumentRenderer.minContentLength {
       throw AppleDocsError.insufficientContent
     }
 
-    return markdown
+    return FetchedDocument(
+      markdown: markdown,
+      requestedPath: normalized,
+      path: page.path,
+      sourceURL: sourceURL
+    )
   }
 
   public static func fetchHIG(path: String) async throws -> String {
@@ -305,7 +328,11 @@ public enum AppleDocsActions {
 
 extension AppleDocsError {
   var isNotFound: Bool {
-    if case .notFound = self { return true }
-    return false
+    switch self {
+    case .notFound, .documentationNotFound:
+      return true
+    default:
+      return false
+    }
   }
 }
