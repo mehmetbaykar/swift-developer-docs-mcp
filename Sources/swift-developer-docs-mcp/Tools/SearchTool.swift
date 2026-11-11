@@ -2,11 +2,13 @@ import AppleDocsCore
 import FastMCP
 import Foundation
 
-@Tool("Search Apple Developer documentation and return structured results")
+@Tool(
+  "Search Apple Developer documentation (https://developer.apple.com/documentation) and return structured results"
+)
 struct SearchAppleDocumentationTool {
   @Generable
   struct Arguments {
-    @Parameter("Search query")
+    @Parameter("Search query for Apple documentation")
     var query: String
   }
 
