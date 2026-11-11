@@ -62,6 +62,14 @@ struct ExternalFetcherTests {
       let jsonUrl = try ExternalFetcher.buildExternalDocCJsonUrl(url)
       #expect(jsonUrl.absoluteString == "https://example.com/data/documentation/MyLib/MyType.json")
     }
+
+    @Test("Preserves a non-default port")
+    func preservesPort() throws {
+      let url = URL(string: "https://example.com:8443/documentation/MyLib/MyType")!
+      let jsonUrl = try ExternalFetcher.buildExternalDocCJsonUrl(url)
+      #expect(
+        jsonUrl.absoluteString == "https://example.com:8443/data/documentation/MyLib/MyType.json")
+    }
   }
 
   @Suite("User Agent")

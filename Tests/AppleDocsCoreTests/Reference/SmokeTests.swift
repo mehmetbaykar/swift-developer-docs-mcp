@@ -100,7 +100,7 @@ struct SmokeTests {
     #expect(linkCount > totalIdentifiers / 2)
   }
 
-  @Test("Converts method names to readable format")
+  @Test("Renders symbol link titles as code spans")
   func methodNames() {
     let result = DocumentRenderer.renderFromJSON(
       SmokeTests.fixtureData,
@@ -127,6 +127,8 @@ struct SmokeTests {
       result.contains(
         "[`Decodable`](/documentation/swift/decodable) Conforms when `Element` conforms to `Decodable`."
       ))
+    #expect(!result.contains("[init ()]"))
+    #expect(!result.contains("[append (_:)]"))
   }
 
   @Test("Generates valid markdown structure")

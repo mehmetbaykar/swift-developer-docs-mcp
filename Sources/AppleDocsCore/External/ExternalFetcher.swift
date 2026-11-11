@@ -40,7 +40,8 @@ public enum ExternalFetcher: Sendable {
       throw AppleDocsError.invalidURL("Missing host or scheme")
     }
 
-    let urlString = "\(scheme)://\(host)\(hostBasePath)/data\(jsonPath)"
+    let authority = sourceUrl.port.map { "\(host):\($0)" } ?? host
+    let urlString = "\(scheme)://\(authority)\(hostBasePath)/data\(jsonPath)"
     guard let url = URL(string: urlString) else {
       throw AppleDocsError.invalidURL(urlString)
     }

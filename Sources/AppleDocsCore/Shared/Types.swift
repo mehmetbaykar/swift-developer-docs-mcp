@@ -60,6 +60,7 @@ public struct ContentItem: Codable, Sendable {
   public let items: [ContentItem]?
   public let itemIdentifiers: [String]?
   public let tabs: [TabNavigatorTab]?
+  public let columns: [ContentItem]?
   public let code: CodeValue?
   public let syntax: String?
   public let level: Int?
@@ -97,7 +98,8 @@ public struct ContentItem: Codable, Sendable {
     rows: [[[ContentItem]]]? = nil, alt: String? = nil,
     variants: [ImageVariantRef]? = nil, destination: String? = nil,
     overridingSymbol: String? = nil, extendedModule: String? = nil,
-    deprecated: Bool? = nil, tabs: [TabNavigatorTab]? = nil
+    deprecated: Bool? = nil, tabs: [TabNavigatorTab]? = nil,
+    columns: [ContentItem]? = nil
   ) {
     self.text = text
     self.type = type
@@ -110,6 +112,7 @@ public struct ContentItem: Codable, Sendable {
     self.items = items
     self.itemIdentifiers = itemIdentifiers
     self.tabs = tabs
+    self.columns = columns
     self.code = code
     self.syntax = syntax
     self.level = level
@@ -143,6 +146,7 @@ public struct ContentItem: Codable, Sendable {
     case inlineContent
     case items
     case tabs
+    case columns
     case code
     case syntax
     case level
@@ -189,6 +193,7 @@ public struct ContentItem: Codable, Sendable {
       self.itemIdentifiers = nil
     }
     self.tabs = try container.decodeIfPresent([TabNavigatorTab].self, forKey: .tabs)
+    self.columns = try container.decodeIfPresent([ContentItem].self, forKey: .columns)
 
     self.code = try container.decodeIfPresent(CodeValue.self, forKey: .code)
     self.syntax = try container.decodeIfPresent(String.self, forKey: .syntax)
@@ -229,6 +234,7 @@ public struct ContentItem: Codable, Sendable {
       try container.encodeIfPresent(itemIdentifiers, forKey: .items)
     }
     try container.encodeIfPresent(tabs, forKey: .tabs)
+    try container.encodeIfPresent(columns, forKey: .columns)
     try container.encodeIfPresent(code, forKey: .code)
     try container.encodeIfPresent(syntax, forKey: .syntax)
     try container.encodeIfPresent(level, forKey: .level)
@@ -368,6 +374,12 @@ public struct SeeAlsoSection: Codable, Sendable {
   public init(title: String, identifiers: [String]? = nil) {
     self.title = title
     self.identifiers = identifiers
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    self.title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+    self.identifiers = try container.decodeIfPresent([String].self, forKey: .identifiers)
   }
 }
 

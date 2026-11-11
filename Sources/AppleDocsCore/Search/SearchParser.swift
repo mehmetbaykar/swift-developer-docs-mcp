@@ -36,29 +36,13 @@ public struct SearchResponse: Codable, Sendable {
   }
 }
 
-public enum SearchServiceError: Error, Equatable, CustomStringConvertible, LocalizedError, Sendable
-{
-  case requestFailed(statusCode: Int)
-  case invalidJSON
-
-  public var description: String {
-    switch self {
-    case .requestFailed(let statusCode):
-      return "Search request failed: \(statusCode)"
-    case .invalidJSON:
-      return "Search response was not valid JSON"
-    }
-  }
-
-  public var errorDescription: String? { description }
-}
-
 public struct AppleDocsSearcher: Sendable {
 
-  private static let searchServiceURL = "https://devintserv.msc.sbz.apple.com/api/v1/query"
-  private static let includedResponses = ["quickSearch", "search"]
-  private static let defaultTargetResultLocale = "en"
-  private static let targetResultLocaleByBaseName: [String: String] = [
+  public static let searchServiceURL = "https://devintserv.msc.sbz.apple.com/api/v1/query"
+  static let includedResponses = ["quickSearch", "search"]
+  static let defaultTargetResultLocale = "en"
+
+  private static let targetResultLocales: [String: String] = [
     "en": "en",
     "zh-CN": "zh-CN",
     "ja-JP": "ja-JP",
@@ -71,12 +55,6 @@ public struct AppleDocsSearcher: Sendable {
     "it-IT": "it-IT",
   ]
 
-  private struct SearchQueryBody: Encodable {
-    let text: String
-    let targetResultLocale: String
-    let includedResponses: [String]
-  }
-
   public static func search(query: String) async throws -> SearchResponse {
     guard let url = URL(string: searchServiceURL) else {
       throw AppleDocsError.invalidURL(searchServiceURL)
@@ -84,130 +62,127 @@ public struct AppleDocsSearcher: Sendable {
 
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
+    request.setValue(Fetcher.randomUserAgent(), forHTTPHeaderField: "User-Agent")
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.setValue("application/jsonl", forHTTPHeaderField: "Accept")
+    // The backend rejects requests without a browser-style Origin/Referer pair.
     request.setValue("https://developer.apple.com", forHTTPHeaderField: "Origin")
     request.setValue("https://developer.apple.com/search/", forHTTPHeaderField: "Referer")
-    request.setValue(Fetcher.randomUserAgent(), forHTTPHeaderField: "User-Agent")
-    request.httpBody = try JSONEncoder().encode(
-      SearchQueryBody(
-        text: query,
-        targetResultLocale: resolveTargetResultLocale(Locale.current.identifier(.bcp47)),
-        includedResponses: includedResponses
-      ))
+    request.httpBody = try makeRequestBody(query: query)
 
     let (data, response) = try await URLSession.shared.data(for: request)
-    let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-    let payload = String(decoding: data, as: UTF8.self)
-    let results = try parseSearchServicePayload(payload, statusCode: statusCode)
+
+    if let httpResponse = response as? HTTPURLResponse,
+      !(200..<300).contains(httpResponse.statusCode)
+    {
+      throw AppleDocsError.httpError(
+        statusCode: httpResponse.statusCode, url: url.absoluteString)
+    }
+
+    guard let payload = String(data: data, encoding: .utf8) else {
+      return SearchResponse(query: query, results: [])
+    }
+
+    let results = try parseSearchEvents(payload)
     return SearchResponse(query: query, results: results)
   }
 
-  static func parseSearchServicePayload(_ payload: String, statusCode: Int = 200) throws
-    -> [SearchResult]
+  static func makeRequestBody(
+    query: String, locale: String = resolveTargetResultLocale()
+  ) throws -> Data {
+    let body: [String: Any] = [
+      "text": query,
+      "targetResultLocale": locale,
+      "includedResponses": includedResponses,
+    ]
+    return try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+  }
+
+  static func resolveTargetResultLocale(_ identifier: String = Locale.current.identifier)
+    -> String
   {
-    guard (200..<300).contains(statusCode) else {
-      throw SearchServiceError.requestFailed(statusCode: statusCode)
+    var normalized = identifier
+    if let at = normalized.firstIndex(of: "@") { normalized = String(normalized[..<at]) }
+    if let dot = normalized.firstIndex(of: ".") { normalized = String(normalized[..<dot]) }
+    normalized = normalized.replacingOccurrences(of: "_", with: "-")
+
+    let subtags = normalized.split(separator: "-").map(String.init)
+    guard let language = subtags.first?.lowercased(), !language.isEmpty,
+      language != "c", language != "posix"
+    else {
+      return defaultTargetResultLocale
     }
-    return extractSearchResults(try readSearchResponseItems(payload))
+
+    let region = subtags.dropFirst().first { subtag in
+      (subtag.count == 2 && subtag.allSatisfy(\.isLetter))
+        || (subtag.count == 3 && subtag.allSatisfy(\.isNumber))
+    }?.uppercased()
+
+    let languageRegion = region.map { "\(language)-\($0)" } ?? language
+    return targetResultLocales[languageRegion]
+      ?? targetResultLocales[language]
+      ?? defaultTargetResultLocale
   }
 
-  static func resolveTargetResultLocale(_ identifier: String) -> String {
-    let trimmed = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { return defaultTargetResultLocale }
-    let normalized = trimmed.replacingOccurrences(of: "_", with: "-")
-    guard let parsed = parseUnicodeLocale(normalized) else { return defaultTargetResultLocale }
-
-    if let match = targetResultLocaleByBaseName[parsed.baseName] {
-      return match
-    }
-    let languageRegion = parsed.region.map { "\(parsed.language)-\($0)" } ?? parsed.language
-    if let match = targetResultLocaleByBaseName[languageRegion] {
-      return match
-    }
-    if let match = targetResultLocaleByBaseName[parsed.language] {
-      return match
-    }
-    return defaultTargetResultLocale
-  }
-
-  private static func readSearchResponseItems(_ payload: String) throws -> [JSONValue] {
-    var items: [JSONValue] = []
-    var streamedSearch: [UInt16] = []
+  static func parseSearchEvents(_ payload: String) throws -> [SearchResult] {
+    var items: [Any] = []
+    var streamedSearch = ""
 
     for line in payload.unicodeScalars.split(separator: "\n") {
-      let trimmed = String(line).trimmingCharacters(in: .whitespacesAndNewlines)
-      if trimmed.isEmpty { continue }
+      let trimmed = String(String.UnicodeScalarView(line)).trimmingCharacters(
+        in: .whitespacesAndNewlines)
+      guard !trimmed.isEmpty else { continue }
 
-      let event = try parseJSON(trimmed)
-      guard event.isRecord else { continue }
+      guard let event = try parseJSON(trimmed) as? [String: Any] else { continue }
 
-      if stringValue(event.property("kind")) == "quickSearch" {
-        items.append(contentsOf: resultsOf(event.property("response") ?? .null))
-      } else if stringValue(event.property("kind")) == "search" {
-        streamedSearch = applySearchDiff(streamedSearch, diff: event.property("diff") ?? .null)
+      switch event["kind"] as? String {
+      case "quickSearch":
+        items.append(contentsOf: resultsOf(event["response"]))
+      case "search":
+        streamedSearch = applySearchDiff(streamedSearch, diff: event["diff"])
+      default:
+        continue
       }
     }
 
     if !streamedSearch.isEmpty {
-      guard let text = string(fromUTF16: streamedSearch) else {
-        throw SearchServiceError.invalidJSON
-      }
-      items.append(contentsOf: resultsOf(try parseJSON(text)))
+      items.append(contentsOf: resultsOf(try parseJSON(streamedSearch)))
     }
 
-    return items
+    return extractSearchResults(items)
   }
 
-  private static func applySearchDiff(_ buffer: [UInt16], diff: JSONValue) -> [UInt16] {
-    guard diff.isRecord else { return buffer }
+  private static func applySearchDiff(_ buffer: String, diff: Any?) -> String {
+    guard let diff = diff as? [String: Any] else { return buffer }
 
-    let removeLast = utf16RemoveCount(diff.property("removeLast"), bufferCount: buffer.count)
-    let append: String
-    if case .string(let value) = diff.property("append") {
-      append = value
-    } else {
-      append = ""
-    }
+    let removeLast = (diff["removeLast"] as? NSNumber)?.intValue ?? 0
+    let append = diff["append"] as? String ?? ""
 
-    var next = buffer
-    if removeLast >= next.count {
-      next.removeAll(keepingCapacity: true)
-    } else if removeLast > 0 {
-      next.removeLast(removeLast)
-    }
-    next.append(contentsOf: append.utf16)
-    return next
+    // `removeLast` counts UTF-16 code units (JavaScript string semantics), not Characters.
+    let utf16 = Array(buffer.utf16)
+    let keptCount = max(0, utf16.count - max(0, removeLast))
+    let kept = String(decoding: utf16[..<keptCount], as: UTF16.self)
+    return kept + append
   }
 
-  private static func utf16RemoveCount(_ value: JSONValue?, bufferCount: Int) -> Int {
-    guard case .number(let number) = value, number.isFinite else { return 0 }
-    let truncated = number.rounded(.towardZero)
-    if truncated <= 0 { return 0 }
-    if truncated >= Double(bufferCount) { return bufferCount }
-    return Int(truncated)
-  }
-
-  private static func parseJSON(_ text: String) throws -> JSONValue {
-    guard let data = text.data(using: .utf8) else {
-      throw SearchServiceError.invalidJSON
-    }
+  private static func parseJSON(_ text: String) throws -> Any {
     do {
-      return try JSONDecoder().decode(JSONValue.self, from: data)
+      return try JSONSerialization.jsonObject(with: Data(text.utf8), options: [.fragmentsAllowed])
     } catch {
-      throw SearchServiceError.invalidJSON
+      throw AppleDocsError.decodingError(
+        underlying: NSError(
+          domain: "AppleDocsSearcher", code: -1,
+          userInfo: [NSLocalizedDescriptionKey: "Search response was not valid JSON"]))
     }
   }
 
-  private static func resultsOf(_ container: JSONValue) -> [JSONValue] {
-    guard container.isRecord, case .array(let results) = container.property("results") else {
-      return []
-    }
-    return results
+  private static func resultsOf(_ container: Any?) -> [Any] {
+    guard let container = container as? [String: Any] else { return [] }
+    return container["results"] as? [Any] ?? []
   }
 
-  private static func extractSearchResults(_ items: [JSONValue]) -> [SearchResult] {
-    var seen: Set<String> = []
+  private static func extractSearchResults(_ items: [Any]) -> [SearchResult] {
+    var seen = Set<String>()
     var results: [SearchResult] = []
 
     for item in items {
@@ -219,210 +194,75 @@ public struct AppleDocsSearcher: Sendable {
     return results
   }
 
-  private static func normalizeSearchResult(_ item: JSONValue) -> SearchResult? {
-    guard let record = unwrapResultValue(item),
-      let metadata = record.property("metadata"),
-      metadata.isRecord
-    else {
-      return nil
-    }
+  static func normalizeSearchResult(_ item: Any) -> SearchResult? {
+    guard let record = item as? [String: Any] else { return nil }
+    let unwrapped = record["value"] as? [String: Any] ?? record
+    guard let metadata = unwrapped["metadata"] as? [String: Any] else { return nil }
 
-    if stringValue(metadata.property("metadataKind")) == "documentation" {
-      guard let title = stringValue(metadata.property("title")),
-        let url = stringValue(metadata.property("permalink"))
-      else {
-        return nil
-      }
+    switch metadata["metadataKind"] as? String {
+    case "documentation":
+      guard let title = stringValue(metadata["title"]),
+        let url = stringValue(metadata["permalink"])
+      else { return nil }
 
       return SearchResult(
         title: title,
         url: url,
-        description: stringValue(metadata.property("description")) ?? "",
-        breadcrumbs: splitHierarchy(stringValue(metadata.property("hierarchy"))),
-        tags: compactStrings([stringValue(metadata.property("kind"))]),
+        description: stringValue(metadata["description"]) ?? "",
+        breadcrumbs: splitHierarchy(stringValue(metadata["hierarchy"])),
+        tags: [stringValue(metadata["kind"])].compactMap { $0 },
         type: "documentation"
       )
-    }
 
-    if stringValue(metadata.property("metadataKind")) == "developer" {
-      guard let title = firstString(metadata.property("titles")),
-        let url = firstString(metadata.property("permalinks"))
-      else {
-        return nil
-      }
+    case "developer":
+      guard let title = firstString(metadata["titles"]),
+        let url = firstString(metadata["permalinks"])
+      else { return nil }
 
-      let itemType = firstString(metadata.property("itemTypes"))
+      let itemType = firstString(metadata["itemTypes"])
       return SearchResult(
         title: title,
         url: url,
-        description: firstString(metadata.property("descriptions")) ?? "",
-        breadcrumbs: compactStrings([firstString(metadata.property("projectNames"))]),
-        tags: compactStrings([
-          itemType,
-          firstString(metadata.property("deliveryLanguageCodes")),
-        ]),
+        description: firstString(metadata["descriptions"]) ?? "",
+        breadcrumbs: [firstString(metadata["projectNames"])].compactMap { $0 },
+        tags: [itemType, firstString(metadata["deliveryLanguageCodes"])].compactMap { $0 },
         type: (itemType ?? "developer").lowercased()
       )
-    }
 
-    if stringValue(metadata.property("metadataKind")) == "webPage" {
-      guard let title = stringValue(metadata.property("title")),
-        let url = stringValue(metadata.property("sourceURL"))
-      else {
-        return nil
-      }
+    case "webPage":
+      guard let title = stringValue(metadata["title"]),
+        let url = stringValue(metadata["sourceURL"])
+      else { return nil }
 
       return SearchResult(
         title: title,
         url: url,
-        description: stringValue(metadata.property("description")) ?? "",
+        description: stringValue(metadata["description"]) ?? "",
         breadcrumbs: [],
         tags: [],
         type: "general"
       )
+
+    default:
+      return nil
     }
-
-    return nil
   }
 
-  private static func unwrapResultValue(_ item: JSONValue) -> JSONValue? {
-    guard item.isRecord else { return nil }
-    if let value = item.property("value"), value.isRecord {
-      return value
-    }
-    return item
+  private static func stringValue(_ value: Any?) -> String? {
+    guard let string = value as? String, !string.isEmpty else { return nil }
+    return string
   }
 
-  private static func stringValue(_ value: JSONValue?) -> String? {
-    guard case .string(let text) = value, !text.isEmpty else { return nil }
-    return text
-  }
-
-  private static func firstString(_ value: JSONValue?) -> String? {
-    guard case .array(let items) = value else { return nil }
-    return items.compactMap { stringValue($0) }.first
+  private static func firstString(_ value: Any?) -> String? {
+    guard let array = value as? [Any] else { return nil }
+    return array.lazy.compactMap { stringValue($0) }.first
   }
 
   private static func splitHierarchy(_ hierarchy: String?) -> [String] {
-    guard let hierarchy, !hierarchy.isEmpty else { return [] }
+    guard let hierarchy else { return [] }
     return hierarchy.components(separatedBy: " > ")
-      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .map { $0.trimmingCharacters(in: .whitespaces) }
       .filter { !$0.isEmpty }
-  }
-
-  private static func compactStrings(_ values: [String?]) -> [String] {
-    values.compactMap { value in
-      guard let value, !value.isEmpty else { return nil }
-      return value
-    }
-  }
-
-  private static func string(fromUTF16 units: [UInt16]) -> String? {
-    guard !units.isEmpty else { return "" }
-    return units.withUnsafeBufferPointer { buffer in
-      guard let baseAddress = buffer.baseAddress else { return nil }
-      return String(utf16CodeUnits: baseAddress, count: buffer.count)
-    }
-  }
-
-  private struct ParsedLocale {
-    var language: String
-    var script: String?
-    var region: String?
-    var variants: [String]
-
-    var baseName: String {
-      var parts = [language]
-      if let script { parts.append(script) }
-      if let region { parts.append(region) }
-      parts.append(contentsOf: variants)
-      return parts.joined(separator: "-")
-    }
-  }
-
-  private static func parseUnicodeLocale(_ identifier: String) -> ParsedLocale? {
-    let subtags = identifier.split(separator: "-", omittingEmptySubsequences: false).map(
-      String.init)
-    guard let languageTag = subtags.first else { return nil }
-    let language = languageTag.lowercased()
-    guard isLanguage(language) else { return nil }
-
-    var index = 1
-    var script: String?
-    var region: String?
-    var variants: [String] = []
-
-    if index < subtags.count, isScript(subtags[index]) {
-      script = canonicalScript(subtags[index])
-      index += 1
-    }
-    if index < subtags.count, isRegion(subtags[index]) {
-      region = canonicalRegion(subtags[index])
-      index += 1
-    }
-    while index < subtags.count, isVariant(subtags[index]) {
-      variants.append(subtags[index].lowercased())
-      index += 1
-    }
-    if index < subtags.count {
-      guard isSingleton(subtags[index]), index + 1 < subtags.count else { return nil }
-    }
-
-    return ParsedLocale(language: language, script: script, region: region, variants: variants)
-  }
-
-  private static func isLanguage(_ value: String) -> Bool {
-    let count = value.count
-    let validLength = count == 2 || count == 3 || (5...8).contains(count)
-    return validLength && isASCIILetters(value)
-  }
-
-  private static func isScript(_ value: String) -> Bool {
-    value.count == 4 && isASCIILetters(value)
-  }
-
-  private static func isRegion(_ value: String) -> Bool {
-    (value.count == 2 && isASCIILetters(value)) || (value.count == 3 && isASCIIDigits(value))
-  }
-
-  private static func isVariant(_ value: String) -> Bool {
-    let scalars = value.unicodeScalars
-    if (5...8).contains(value.count), scalars.allSatisfy(isASCIIAlphanumeric) {
-      return true
-    }
-    guard value.count == 4, let first = scalars.first, isASCIIDigit(first) else { return false }
-    return scalars.dropFirst().allSatisfy(isASCIIAlphanumeric)
-  }
-
-  private static func isSingleton(_ value: String) -> Bool {
-    guard value.count == 1, let scalar = value.unicodeScalars.first else { return false }
-    return isASCIIAlphanumeric(scalar)
-  }
-
-  private static func isASCIILetters(_ value: String) -> Bool {
-    !value.isEmpty && value.unicodeScalars.allSatisfy { $0.isASCII && Character($0).isLetter }
-  }
-
-  private static func isASCIIDigits(_ value: String) -> Bool {
-    !value.isEmpty && value.unicodeScalars.allSatisfy(isASCIIDigit)
-  }
-
-  private static func isASCIIDigit(_ scalar: Unicode.Scalar) -> Bool {
-    scalar.isASCII && scalar.value >= 48 && scalar.value <= 57
-  }
-
-  private static func isASCIIAlphanumeric(_ scalar: Unicode.Scalar) -> Bool {
-    isASCIIDigit(scalar) || (scalar.isASCII && Character(scalar).isLetter)
-  }
-
-  private static func canonicalScript(_ value: String) -> String {
-    let lower = value.lowercased()
-    guard let first = lower.first else { return lower }
-    return first.uppercased() + lower.dropFirst()
-  }
-
-  private static func canonicalRegion(_ value: String) -> String {
-    value.count == 3 ? value : value.uppercased()
   }
 
   public static func parseSearchResults(html: String) throws -> [SearchResult] {
@@ -488,50 +328,5 @@ public struct AppleDocsSearcher: Sendable {
     }
 
     return results
-  }
-}
-
-private enum JSONValue: Sendable {
-  case object([String: JSONValue])
-  case array([JSONValue])
-  case string(String)
-  case number(Double)
-  case bool(Bool)
-  case null
-
-  var isRecord: Bool {
-    switch self {
-    case .object, .array:
-      return true
-    case .string, .number, .bool, .null:
-      return false
-    }
-  }
-
-  func property(_ key: String) -> JSONValue? {
-    guard case .object(let fields) = self else { return nil }
-    return fields[key]
-  }
-}
-
-extension JSONValue: Decodable {
-  init(from decoder: Decoder) throws {
-    let container = try decoder.singleValueContainer()
-    if container.decodeNil() {
-      self = .null
-    } else if let value = try? container.decode(Bool.self) {
-      self = .bool(value)
-    } else if let value = try? container.decode(Double.self) {
-      self = .number(value)
-    } else if let value = try? container.decode(String.self) {
-      self = .string(value)
-    } else if let value = try? container.decode([JSONValue].self) {
-      self = .array(value)
-    } else if let value = try? container.decode([String: JSONValue].self) {
-      self = .object(value)
-    } else {
-      throw DecodingError.dataCorruptedError(
-        in: container, debugDescription: "Unsupported JSON value")
-    }
   }
 }

@@ -19,8 +19,7 @@ struct ExternalCommand: CLICommand {
       printToStdErr("Usage: \(usage)")
       printToStdErr("")
       printToStdErr("Examples:")
-      printToStdErr(
-        "  external https://swiftlang.github.io/swift-docc-plugin/documentation/swiftdoccplugin")
+      printToStdErr("  external https://swiftlang.github.io/swift-markdown/documentation/markdown")
       Foundation.exit(1)
     }
 

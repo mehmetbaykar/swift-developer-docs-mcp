@@ -21,7 +21,7 @@ public enum VideoTranscript: Sendable {
   public static func fetchVideoTranscriptMarkdown(
     path: String,
     fetcher: @Sendable (_ url: URL) async throws -> (Data, URLResponse) =
-      { url in try await URLSession.shared.data(for: URLRequest(url: url)) }
+      { url in try await URLSession.shared.data(for: makeVideoPageRequest(url: url)) }
   ) async throws -> String {
     let (collection, videoId, sourceUrl) = try parseVideoPath(path)
     let html = try await fetchVideoTranscriptHtml(url: sourceUrl, fetcher: fetcher)
@@ -66,6 +66,14 @@ public enum VideoTranscript: Sendable {
     }
 
     return (collection, videoId, url)
+  }
+
+  public static func makeVideoPageRequest(url: URL) -> URLRequest {
+    var request = URLRequest(url: url)
+    request.setValue(Fetcher.randomUserAgent(), forHTTPHeaderField: "User-Agent")
+    request.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
+    request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+    return request
   }
 
   static func fetchVideoTranscriptHtml(

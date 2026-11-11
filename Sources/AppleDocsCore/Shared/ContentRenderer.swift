@@ -35,10 +35,9 @@ public struct ContentRenderer: Sendable {
           ?? item.identifier.map { extractTitleFromIdentifier($0) }
           ?? ""
         let url =
-          item.identifier != nil
-          ? convertIdentifierToURL(
-            item.identifier!, references: references, externalOrigin: externalOrigin)
-          : ""
+          item.identifier.map {
+            convertIdentifierToURL($0, references: references, externalOrigin: externalOrigin)
+          } ?? ""
         return "[\(title)](\(url))"
       case "emphasis":
         let inner =
@@ -352,7 +351,7 @@ public struct ContentRenderer: Sendable {
     _ item: ContentItem, references: [String: ContentItem]?, depth: Int,
     externalOrigin: String?
   ) -> String {
-    guard let columns = item.content else { return "" }
+    guard let columns = item.columns ?? item.content else { return "" }
 
     var markdown = ""
     for column in columns {

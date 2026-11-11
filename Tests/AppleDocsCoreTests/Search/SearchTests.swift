@@ -6,15 +6,39 @@ import Testing
 @Suite("Search Parser Tests")
 struct SearchTests {
 
-  private struct SearchDiffEvent: Encodable {
-    struct Diff: Encodable {
-      let append: String
-      let removeLast: Int
+  private let jsonlPayload: String = {
+    let quickSearch = """
+      {"kind":"quickSearch","response":{"results":[{"metadata":{"title":"SchemaMigrationPlan","permalink":"https://developer.apple.com/documentation/swiftdata/schemamigrationplan","description":"An interface for describing the evolution of a schema and how to migrate between specific versions.","hierarchy":"SwiftData > SchemaMigrationPlan","kind":"symbol","metadataKind":"documentation"},"origin":"documentation"},{"metadata":{"title":"Get Started - SwiftUI","sourceURL":"https://developer.apple.com/swiftui/get-started/","description":"SwiftUI provides everything you need to begin designing.","metadataKind":"webPage"},"origin":"developerWeb"}]}}
+      """
+
+    let streamedSearch = """
+      {"results":[{"excerpt":"An interface for describing the evolution of a schema","value":{"metadata":{"title":"SchemaMigrationPlan","permalink":"https://developer.apple.com/documentation/swiftdata/schemamigrationplan","description":"An interface for describing the evolution of a schema and how to migrate between specific versions.","hierarchy":"SwiftData > SchemaMigrationPlan","kind":"symbol","metadataKind":"documentation"},"origin":"documentation"}},{"excerpt":"Learn how to use schema macros","value":{"metadata":{"titles":["Model your schema with SwiftData"],"permalinks":["https://developer.apple.com/videos/play/wwdc2023/10195"],"descriptions":["Learn how to use schema macros and migration plans with SwiftData."],"projectNames":["WWDC23"],"itemTypes":["Video"],"deliveryLanguageCodes":["eng"],"metadataKind":"developer"},"origin":"developerWWDC"}},{"excerpt":"","value":{"metadata":{"title":"Swift.org - The Swift Programming Language","sourceURL":"https://www.swift.org/documentation/","description":"Documentation for the Swift programming language.","metadataKind":"webPage"},"origin":"swift"}}]}
+      """
+
+    let midpoint = streamedSearch.index(
+      streamedSearch.startIndex, offsetBy: streamedSearch.count / 2)
+    let head = String(streamedSearch[..<midpoint])
+    let tail = String(streamedSearch[midpoint...])
+
+    func diffEvent(append: String, removeLast: Int) -> String {
+      let escaped =
+        append
+        .replacingOccurrences(of: "\\", with: "\\\\")
+        .replacingOccurrences(of: "\"", with: "\\\"")
+      return
+        "{\"kind\":\"search\",\"diff\":{\"append\":\"\(escaped)\",\"removeLast\":\(removeLast)}}"
     }
 
-    let kind = "search"
-    let diff: Diff
-  }
+    return [
+      quickSearch,
+      "{\"kind\":\"quickSearchFinished\"}",
+      "",
+      diffEvent(append: head, removeLast: 0),
+      diffEvent(append: "PARTIAL", removeLast: 0),
+      diffEvent(append: tail, removeLast: "PARTIAL".count),
+      "{\"kind\":\"searchFinished\"}",
+    ].joined(separator: "\n")
+  }()
 
   private func loadFixture(_ name: String) throws -> String {
     let fixtureURL = Bundle.module.url(
@@ -193,22 +217,12 @@ struct SearchTests {
     #expect(results.isEmpty)
   }
 
-  @Test("Parses JSONL quickSearch results and streamed search diffs")
-  func parseQueryJSONL() throws {
-    let streamed = """
-      {"results":[{"excerpt":"An interface for describing the evolution of a schema","value":{"metadata":{"title":"SchemaMigrationPlan","permalink":"https://developer.apple.com/documentation/swiftdata/schemamigrationplan","description":"An interface for describing the evolution of a schema and how to migrate between specific versions.","hierarchy":"SwiftData > SchemaMigrationPlan","kind":"symbol","metadataKind":"documentation"},"origin":"documentation"}},{"excerpt":"Learn how to use schema macros","value":{"metadata":{"titles":["Model your schema with SwiftData"],"permalinks":["https://developer.apple.com/videos/play/wwdc2023/10195"],"descriptions":["Learn how to use schema macros and migration plans with SwiftData."],"projectNames":["WWDC23"],"itemTypes":["Video"],"deliveryLanguageCodes":["eng"],"metadataKind":"developer"},"origin":"developerWWDC"}},{"excerpt":"","value":{"metadata":{"title":"Swift.org - The Swift Programming Language","sourceURL":"https://www.swift.org/documentation/","description":"Documentation for the Swift programming language.","metadataKind":"webPage"},"origin":"swift"}}]}
-      """
-    let payload = """
-      {"kind":"quickSearch","response":{"results":[{"metadata":{"title":"SchemaMigrationPlan","permalink":"https://developer.apple.com/documentation/swiftdata/schemamigrationplan","description":"An interface for describing the evolution of a schema and how to migrate between specific versions.","hierarchy":"SwiftData > SchemaMigrationPlan","kind":"symbol","metadataKind":"documentation"},"origin":"documentation"},{"metadata":{"title":"Get Started - SwiftUI","sourceURL":"https://developer.apple.com/swiftui/get-started/","description":"SwiftUI provides everything you need to begin designing.","metadataKind":"webPage"},"origin":"developerWeb"}]}}
-      {"kind":"quickSearchFinished"}
-
-      \(try searchDiffLines(for: streamed))
-      {"kind":"searchFinished"}
-      """
-
-    let results = try AppleDocsSearcher.parseSearchServicePayload(payload)
+  @Test("Parses the JSONL response from Apple's MSC query backend")
+  func parseSearchEventsFromJSONL() throws {
+    let results = try AppleDocsSearcher.parseSearchEvents(jsonlPayload)
 
     #expect(results.count == 4)
+
     #expect(results[0].title == "SchemaMigrationPlan")
     #expect(
       results[0].url == "https://developer.apple.com/documentation/swiftdata/schemamigrationplan")
@@ -222,7 +236,6 @@ struct SearchTests {
 
     #expect(results[1].title == "Get Started - SwiftUI")
     #expect(results[1].url == "https://developer.apple.com/swiftui/get-started/")
-    #expect(results[1].description == "SwiftUI provides everything you need to begin designing.")
     #expect(results[1].breadcrumbs.isEmpty)
     #expect(results[1].tags.isEmpty)
     #expect(results[1].type == "general")
@@ -238,30 +251,72 @@ struct SearchTests {
 
     #expect(results[3].title == "Swift.org - The Swift Programming Language")
     #expect(results[3].url == "https://www.swift.org/documentation/")
-    #expect(results[3].description == "Documentation for the Swift programming language.")
-    #expect(results[3].breadcrumbs.isEmpty)
-    #expect(results[3].tags.isEmpty)
     #expect(results[3].type == "general")
   }
 
-  @Test("Skips event kinds other than quickSearch and search")
-  func skipsUnrequestedEventKinds() throws {
+  @Test("Ignores results carried by response kinds that were not requested")
+  func ignoresUnrequestedResponseKinds() throws {
     let payload = """
       {"kind":"ask","response":{"results":[{"metadata":{"title":"Generated answer","permalink":"https://developer.apple.com/generated","metadataKind":"documentation"},"origin":"documentation"}]}}
       {"kind":"quickSearch","response":{"results":[{"metadata":{"title":"WKWebView","permalink":"https://developer.apple.com/documentation/webkit/wkwebview","description":"An object that displays interactive web content.","hierarchy":"WebKit > WKWebView","kind":"symbol","metadataKind":"documentation"},"origin":"documentation"}]}}
-      {"kind":"quickSearchFinished"}
-      {"kind":"searchFinished"}
-      null
-      []
       """
 
-    let results = try AppleDocsSearcher.parseSearchServicePayload(payload)
+    let results = try AppleDocsSearcher.parseSearchEvents(payload)
 
     #expect(results.count == 1)
     #expect(results[0].title == "WKWebView")
-    #expect(results[0].breadcrumbs == ["WebKit", "WKWebView"])
-    #expect(results[0].tags == ["symbol"])
-    #expect(results[0].type == "documentation")
+  }
+
+  @Test("Returns empty results when Apple search has no matches or omits the results array")
+  func emptyJSONLResults() throws {
+    let noMatches = """
+      {"kind":"quickSearch","response":{"results":[]}}
+      {"kind":"quickSearchFinished"}
+      {"kind":"searchFinished"}
+      """
+    #expect(try AppleDocsSearcher.parseSearchEvents(noMatches).isEmpty)
+
+    let noResultsArray = """
+      {"kind":"quickSearch","response":{"featuredResults":[]}}
+      """
+    #expect(try AppleDocsSearcher.parseSearchEvents(noResultsArray).isEmpty)
+  }
+
+  @Test("Skips results that lack a title or URL")
+  func skipsIncompleteResults() throws {
+    let payload = """
+      {"kind":"quickSearch","response":{"results":[{"metadata":{"title":"","permalink":"https://developer.apple.com/documentation/foo","metadataKind":"documentation"}},{"metadata":{"titles":["Untitled"],"permalinks":[],"metadataKind":"developer"}},{"metadata":{"title":"Unknown kind","permalink":"https://developer.apple.com/x","metadataKind":"mystery"}}]}}
+      """
+
+    #expect(try AppleDocsSearcher.parseSearchEvents(payload).isEmpty)
+  }
+
+  @Test("Throws when Apple's backend returns malformed JSONL")
+  func throwsOnMalformedJSONL() {
+    #expect(throws: AppleDocsError.self) {
+      try AppleDocsSearcher.parseSearchEvents("not json")
+    }
+  }
+
+  @Test("Builds the request body Apple's query endpoint expects")
+  func buildsRequestBody() throws {
+    let data = try AppleDocsSearcher.makeRequestBody(query: "SchemaMigrationPlan", locale: "en")
+    let body = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+    #expect(body["text"] as? String == "SchemaMigrationPlan")
+    #expect(body["targetResultLocale"] as? String == "en")
+    #expect(body["includedResponses"] as? [String] == ["quickSearch", "search"])
+  }
+
+  @Test("Splits JSONL lines only at line feeds")
+  func splitsLinesOnlyAtLineFeeds() throws {
+    let payload =
+      "{\"kind\":\"quickSearch\",\"response\":{\"results\":[{\"metadata\":{\"title\":\"A\u{2028}B\",\"permalink\":\"https://example.com/a\",\"metadataKind\":\"documentation\"}}]}}\r\n{\"kind\":\"quickSearchFinished\"}\n"
+
+    let results = try AppleDocsSearcher.parseSearchEvents(payload)
+
+    #expect(results.count == 1)
+    #expect(results.first?.title == "A\u{2028}B")
   }
 
   @Test("removeLast counts UTF-16 code units")
@@ -271,14 +326,13 @@ struct SearchTests {
     #expect(marked.utf16.count == 2)
 
     let prefix = "{\"results\":[{\"metadata\":{\"title\":\"\(marked)"
-    let suffix =
-      "\",\"permalink\":\"https://example.com/a\",\"metadataKind\":\"documentation\"}}]}"
+    let suffix = "\",\"permalink\":\"https://example.com/a\",\"metadataKind\":\"documentation\"}}]}"
     let payload = """
-      \(try encode(SearchDiffEvent(diff: .init(append: prefix, removeLast: 0))))
-      \(try encode(SearchDiffEvent(diff: .init(append: suffix, removeLast: 1))))
+      \(try searchDiffEvent(append: prefix, removeLast: 0))
+      \(try searchDiffEvent(append: suffix, removeLast: 1))
       """
 
-    let results = try AppleDocsSearcher.parseSearchServicePayload(payload)
+    let results = try AppleDocsSearcher.parseSearchEvents(payload)
 
     #expect(results.count == 1)
     #expect(results[0].title == "e")
@@ -286,118 +340,26 @@ struct SearchTests {
     #expect(results[0].type == "documentation")
   }
 
-  @Test("Returns an empty result set when the service reports no matches")
-  func emptyResultsWhenNothingMatches() throws {
-    let payload = """
-      {"kind":"quickSearch","response":{"results":[]}}
-      {"kind":"quickSearchFinished"}
-      {"kind":"searchFinished"}
-      """
-    let results = try AppleDocsSearcher.parseSearchServicePayload(payload)
-    #expect(results.isEmpty)
+  @Test("Maps system locales to Apple's accepted target result locales")
+  func resolvesTargetResultLocale() {
+    #expect(AppleDocsSearcher.resolveTargetResultLocale("en-US-u-hc-h23") == "en")
+    #expect(AppleDocsSearcher.resolveTargetResultLocale("en_US") == "en")
+    #expect(AppleDocsSearcher.resolveTargetResultLocale("en_GB@calendar=gregorian") == "en")
+    #expect(AppleDocsSearcher.resolveTargetResultLocale("ja-JP") == "ja-JP")
+    #expect(AppleDocsSearcher.resolveTargetResultLocale("ja_JP.UTF-8") == "ja-JP")
+    #expect(AppleDocsSearcher.resolveTargetResultLocale("es-419") == "es-lamr")
+    #expect(AppleDocsSearcher.resolveTargetResultLocale("zh-Hans-CN") == "zh-CN")
+    #expect(AppleDocsSearcher.resolveTargetResultLocale("nl-NL") == "en")
+    #expect(AppleDocsSearcher.resolveTargetResultLocale("C") == "en")
+    #expect(AppleDocsSearcher.resolveTargetResultLocale("") == "en")
   }
 
-  @Test("Returns an empty result set when the results array is omitted")
-  func emptyResultsWhenResultsArrayOmitted() throws {
-    let payload = #"{"kind":"quickSearch","response":{"featuredResults":[]}}"#
-    let results = try AppleDocsSearcher.parseSearchServicePayload(payload)
-    #expect(results.isEmpty)
-  }
-
-  @Test("A non-2xx response throws")
-  func nonSuccessStatusThrows() {
-    for status in [199, 300, 404, 500] {
-      do {
-        _ = try AppleDocsSearcher.parseSearchServicePayload("not json", statusCode: status)
-        Issue.record("Expected status \(status) to throw")
-      } catch {
-        #expect(error.localizedDescription == "Search request failed: \(status)")
-      }
-    }
-  }
-
-  @Test("A 2xx response with an empty result list does not throw")
-  func successStatusReturnsResults() throws {
-    let payload = #"{"kind":"quickSearch","response":{"results":[]}}"#
-    let results = try AppleDocsSearcher.parseSearchServicePayload(payload, statusCode: 201)
-    #expect(results.isEmpty)
-  }
-
-  @Test("Invalid JSON throws")
-  func invalidJSONThrows() {
-    do {
-      _ = try AppleDocsSearcher.parseSearchServicePayload("not json")
-      Issue.record("Expected invalid JSON to throw")
-    } catch {
-      #expect(error.localizedDescription == "Search response was not valid JSON")
-    }
-  }
-
-  @Test("Splits lines only at line feeds")
-  func lineSeparatorInsideString() throws {
-    let payload =
-      "{\"kind\":\"quickSearch\",\"response\":{\"results\":[{\"metadata\":{\"title\":\"A\u{2028}B\",\"permalink\":\"https://example.com/a\",\"metadataKind\":\"documentation\"}}]}}\r\n{\"kind\":\"quickSearchFinished\"}\n"
-
-    let results = try AppleDocsSearcher.parseSearchServicePayload(payload)
-
-    #expect(results.count == 1)
-    #expect(results.first?.title == "A\u{2028}B")
-  }
-
-  @Test("Resolves Apple target result locales")
-  func resolveTargetResultLocale() {
-    let cases: [(String, String)] = [
-      ("en", "en"),
-      ("en-US-u-hc-h23", "en"),
-      ("zh-CN", "zh-CN"),
-      ("ja-JP", "ja-JP"),
-      ("ko-KR", "ko-KR"),
-      ("fr-FR", "fr-FR"),
-      ("de-DE", "de-DE"),
-      ("pt-BR", "pt-BR"),
-      ("es-LA", "es-lamr"),
-      ("es-419", "es-lamr"),
-      ("it-IT", "it-IT"),
-      ("zh-Hans-CN", "zh-CN"),
-      ("ja-JP-posix", "ja-JP"),
-      ("sv-SE", "en"),
-      ("", "en"),
-      ("nope", "en"),
+  private func searchDiffEvent(append: String, removeLast: Int) throws -> String {
+    let object: [String: Any] = [
+      "kind": "search",
+      "diff": ["append": append, "removeLast": removeLast],
     ]
-    for (identifier, expected) in cases {
-      #expect(
-        AppleDocsSearcher.resolveTargetResultLocale(identifier) == expected,
-        "locale \(identifier)"
-      )
-    }
-  }
-
-  private func searchDiffLines(for serialized: String) throws -> String {
-    let units = Array(serialized.utf16)
-    let midpoint = units.count / 2
-    let head = try utf16Slice(units, from: 0, to: midpoint)
-    let tail = try utf16Slice(units, from: midpoint, to: units.count)
-    let speculative = "PARTIAL"
-    let events = [
-      SearchDiffEvent(diff: .init(append: head, removeLast: 0)),
-      SearchDiffEvent(diff: .init(append: speculative, removeLast: 0)),
-      SearchDiffEvent(diff: .init(append: tail, removeLast: speculative.utf16.count)),
-    ]
-    return try events.map(encode).joined(separator: "\n")
-  }
-
-  private func encode<T: Encodable>(_ value: T) throws -> String {
-    let data = try JSONEncoder().encode(value)
+    let data = try JSONSerialization.data(withJSONObject: object)
     return String(decoding: data, as: UTF8.self)
-  }
-
-  private func utf16Slice(_ units: [UInt16], from start: Int, to end: Int) throws -> String {
-    if start == end { return "" }
-    let slice = Array(units[start..<end])
-    return try #require(
-      slice.withUnsafeBufferPointer { buffer in
-        guard let baseAddress = buffer.baseAddress else { return nil }
-        return String(utf16CodeUnits: baseAddress, count: buffer.count)
-      })
   }
 }

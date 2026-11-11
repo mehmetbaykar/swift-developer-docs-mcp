@@ -356,9 +356,7 @@ public struct HIGRenderer: Sendable {
     references: [String: HIGReferenceItem],
     depth: Int = 0
   ) -> String {
-    // HIG rows use "columns" in JSON, which maps to item.content in ContentItem.
-    // Each column has its own content array.
-    guard let columns = item.content, !columns.isEmpty else { return "" }
+    guard let columns = item.columns ?? item.content, !columns.isEmpty else { return "" }
 
     var markdown = ""
     for column in columns {

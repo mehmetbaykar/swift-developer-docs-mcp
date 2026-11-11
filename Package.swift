@@ -10,9 +10,11 @@ let package = Package(
     .executable(name: "swift-developer-docs-mcp", targets: ["swift-developer-docs-mcp"]),
   ],
   dependencies: [
-    .package(url: "https://github.com/mehmetbaykar/swift-fast-mcp", from: "2.3.0"),
-    .package(url: "https://github.com/scinfu/SwiftSoup", from: "2.7.0"),
-    .package(url: "https://github.com/hummingbird-project/hummingbird", from: "2.0.0"),
+    .package(url: "https://github.com/mehmetbaykar/swift-fast-mcp", from: "2.7.0"),
+    .package(url: "https://github.com/scinfu/SwiftSoup", from: "2.13.9"),
+    .package(url: "https://github.com/hummingbird-project/hummingbird", from: "2.26.0"),
+    .package(url: "https://github.com/apple/swift-crypto.git", from: "5.1.1"),
+    .package(url: "https://github.com/swift-server/swift-service-lifecycle.git", from: "2.12.0"),
   ],
   targets: [
     .target(
@@ -25,6 +27,8 @@ let package = Package(
         "AppleDocsCore",
         .product(name: "FastMCP", package: "swift-fast-mcp"),
         .product(name: "Hummingbird", package: "hummingbird"),
+        .product(name: "Crypto", package: "swift-crypto"),
+        .product(name: "ServiceLifecycle", package: "swift-service-lifecycle"),
       ],
       exclude: ["Resources/llms.txt"]
     ),
@@ -39,6 +43,7 @@ let package = Package(
         "swift-developer-docs-mcp",
         .product(name: "Hummingbird", package: "hummingbird"),
         .product(name: "HummingbirdTesting", package: "hummingbird"),
+        .product(name: "Crypto", package: "swift-crypto"),
       ]
     ),
   ]

@@ -81,7 +81,7 @@ Sources/AppleDocsCore/
 │   ├── ReferenceFetcher.swift   — Injectable reference doc fetching
 │   └── DocumentationPageResolver.swift — Path resolution for missing symbol pages
 ├── Search/
-│   ├── SearchParser.swift       — JSONL search client; HTML parser is unused by live search
+│   ├── SearchParser.swift       — Apple search JSONL client + result normalization
 │   ├── SearchClient.swift       — Injectable search struct
 │   └── SearchTypes.swift        — SearchResult, SearchOptions
 ├── HIG/
@@ -119,6 +119,7 @@ Sources/swift-developer-docs-mcp/
 │   └── ToolExecutionError.swift — Failure raised as an MCP tool error
 ├── Server/
 │   ├── ServerApp.swift          — Hummingbird routes + llms.txt
+│   ├── AgentDiscovery.swift     — SKILL.md, agent card, api-catalog, agent-skills index
 │   ├── SecurityHeadersMiddleware.swift
 │   ├── CORSMiddleware.swift
 │   └── TrailingSlashMiddleware.swift
