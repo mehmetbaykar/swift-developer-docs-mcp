@@ -63,7 +63,7 @@ npx -y -p @mehmetbaykar/swift-developer-docs-mcp \
 
 ```bash
 npx -y -p @mehmetbaykar/swift-developer-docs-mcp \
-  swift-developer-docs-mcp external https://apple.github.io/swift-argument-parser/documentation/argumentparser
+  swift-developer-docs-mcp external https://swiftlang.github.io/swift-docc-plugin/documentation/swiftdoccplugin
 ```
 
 ### Auto-routing
@@ -74,8 +74,10 @@ npx -y -p @mehmetbaykar/swift-developer-docs-mcp \
 npx -y -p @mehmetbaykar/swift-developer-docs-mcp \
   swift-developer-docs-mcp fetch videos/play/wwdc2024/10133
 npx -y -p @mehmetbaykar/swift-developer-docs-mcp \
-  swift-developer-docs-mcp fetch https://apple.github.io/swift-argument-parser/documentation/argumentparser
+  swift-developer-docs-mcp fetch https://swiftlang.github.io/swift-docc-plugin/documentation/swiftdoccplugin
 ```
+
+When a command fails, it prints one line `swift-developer-docs-mcp: <message>` to standard error and exits with status 1.
 
 ## MCP Tools Quick Reference
 
@@ -88,6 +90,8 @@ Use these when `swift-developer-docs-mcp` is configured as an MCP server over st
 | `fetchAppleVideoTranscript` | `path: string` | Fetch Apple video transcript by `/videos/play/...` path |
 | `fetchExternalDocumentation` | `url: string` | Fetch external Swift-DocC page by absolute HTTPS URL |
 
+The fetch tools return plain Markdown. `fetchAppleDocumentation` puts this text before the Markdown when the page is at another path than the requested path: `No page exists at /documentation/<requested>. This is the page at /documentation/<resolved>.` A failure is a tool error.
+
 ## Best Practices
 
 - Search first if the exact path is unknown.
@@ -95,6 +99,8 @@ Use these when `swift-developer-docs-mcp` is configured as an MCP server over st
 - Keep source links in answers so users can verify details quickly.
 - Use the CLI `fetch` command when you want automatic routing across documentation, HIG, video, and external docs.
 - Prefer `npx -p ... swift-developer-docs-mcp ...` over the shorthand `npx <package> ...` form so the binary is invoked explicitly.
+- Do not rely on conformance conditions such as "Conforms when `Element` conforms to `Hashable`." Apple's documentation data leaves some out and gets some wrong. When a condition matters, read the declaration in the module's `.swiftinterface` file in the SDK.
+- When a fetch reports candidate paths, fetch one of the listed paths.
 
 ## Troubleshooting
 
@@ -102,6 +108,7 @@ Use these when `swift-developer-docs-mcp` is configured as an MCP server over st
 
 - The path may be incorrect or too broad.
 - Run a search query first, then fetch a specific result path.
+- When the error lists candidate paths, fetch one of those paths.
 
 ### External page cannot be fetched
 
