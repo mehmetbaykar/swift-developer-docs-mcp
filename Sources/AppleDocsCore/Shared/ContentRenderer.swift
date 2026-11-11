@@ -444,7 +444,10 @@ public struct ContentRenderer: Sendable {
     guard let identifiers = item.identifiers ?? item.itemIdentifiers else { return "" }
 
     let markdown = identifiers.map { identifier in
-      let title = extractTitleFromIdentifier(identifier)
+      let title =
+        resolveReferenceTitle(
+          references?[identifier], references: references, externalOrigin: externalOrigin)
+        ?? extractTitleFromIdentifier(identifier)
       let url = convertIdentifierToURL(
         identifier,
         references: references,

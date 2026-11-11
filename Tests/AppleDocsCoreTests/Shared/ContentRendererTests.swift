@@ -1211,4 +1211,35 @@ struct ContentRendererTests {
       #expect(result.contains("Level 30 text"))
     }
   }
+
+  @Suite("Link Blocks")
+  struct LinkBlocks {
+    @Test("Uses the reference title for the items of a links block")
+    func linksUseReferenceTitles() {
+      let sample =
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Landmarks-Building-an-app-with-Liquid-Glass"
+      let symbol = "doc://com.apple.SwiftUI/documentation/SwiftUI/View"
+      let missing = "doc://com.apple.SwiftUI/documentation/SwiftUI/Some-Missing-Page"
+      let references: [String: ContentItem] = [
+        sample: ContentItem(
+          type: "topic", title: "Landmarks: Building an app with Liquid Glass",
+          url: "/documentation/swiftui/landmarks-building-an-app-with-liquid-glass",
+          role: "sampleCode"),
+        symbol: ContentItem(
+          type: "topic", title: "View", url: "/documentation/swiftui/view", role: "symbol"),
+      ]
+      let item = ContentItem(type: "links", itemIdentifiers: [sample, symbol, missing])
+
+      let result = ContentRenderer.renderContentArray([item], references: references)
+
+      let missingTitle = ContentRenderer.extractTitleFromIdentifier(missing)
+      let missingURL = ContentRenderer.convertIdentifierToURL(missing, references: references)
+      let expected = [
+        "- [Landmarks: Building an app with Liquid Glass](/documentation/swiftui/landmarks-building-an-app-with-liquid-glass)",
+        "- [`View`](/documentation/swiftui/view)",
+        "- [\(missingTitle)](\(missingURL))",
+      ].joined(separator: "\n")
+      #expect(result == expected + "\n\n")
+    }
+  }
 }
