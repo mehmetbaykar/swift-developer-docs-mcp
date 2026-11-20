@@ -3,6 +3,10 @@ import Testing
 
 @testable import AppleDocsCore
 
+#if canImport(FoundationNetworking)
+  import FoundationNetworking
+#endif
+
 @Suite("VideoTranscript")
 struct VideoTranscriptTests {
 
@@ -237,9 +241,11 @@ struct VideoTranscriptTests {
       return try String(contentsOf: fixtureURL, encoding: .utf8)
     }
 
-    private static func mockFetcher(html: String) -> @Sendable (URL) async throws -> (
-      Data, URLResponse
-    ) {
+    private static func mockFetcher(html: String)
+      -> @Sendable (URL) async throws -> (
+        Data, URLResponse
+      )
+    {
       { url in
         let response = HTTPURLResponse(
           url: url, statusCode: 200, httpVersion: nil,
