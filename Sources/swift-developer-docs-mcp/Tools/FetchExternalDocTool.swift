@@ -28,9 +28,4 @@ struct FetchExternalDocumentationTool {
         "Error fetching external content for \"\(arguments.url)\": \(error.localizedDescription)")
     }
   }
-
-  func makeOutputSegments(from arguments: GeneratedContent) async throws -> [Transcript.Segment] {
-    let markdown = try await execute(try Arguments(arguments))
-    return [.text(.init(content: markdown))]
-  }
 }
