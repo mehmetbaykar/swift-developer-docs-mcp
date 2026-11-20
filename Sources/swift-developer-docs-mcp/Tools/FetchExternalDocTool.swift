@@ -3,7 +3,13 @@ import FastMCP
 import Foundation
 
 @Tool(
-  "Fetch a page from a public Swift-DocC documentation site (https://www.swift.org/documentation/docc/) by absolute HTTPS URL and return it as Markdown"
+  "Fetch a page from a public Swift-DocC documentation site (https://www.swift.org/documentation/docc/) by absolute HTTPS URL and return it as Markdown",
+  name: "fetchExternalDocumentation",
+  title: "Fetch External Documentation",
+  readOnly: true,
+  destructive: false,
+  idempotent: true,
+  openWorld: true
 )
 struct FetchExternalDocumentationTool {
   @Generable

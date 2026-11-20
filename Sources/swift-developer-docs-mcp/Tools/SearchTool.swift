@@ -3,7 +3,13 @@ import FastMCP
 import Foundation
 
 @Tool(
-  "Search Apple Developer documentation (https://developer.apple.com/documentation) and return structured results"
+  "Search Apple Developer documentation (https://developer.apple.com/documentation) and return structured results",
+  name: "searchAppleDocumentation",
+  title: "Search Apple Documentation",
+  readOnly: true,
+  destructive: false,
+  idempotent: true,
+  openWorld: true
 )
 struct SearchAppleDocumentationTool {
   @Generable

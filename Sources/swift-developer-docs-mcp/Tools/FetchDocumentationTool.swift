@@ -3,7 +3,13 @@ import FastMCP
 import Foundation
 
 @Tool(
-  "Fetch a page of Apple Developer documentation (https://developer.apple.com/documentation) or the Human Interface Guidelines (https://developer.apple.com/design/human-interface-guidelines) by path and return it as Markdown"
+  "Fetch a page of Apple Developer documentation (https://developer.apple.com/documentation) or the Human Interface Guidelines (https://developer.apple.com/design/human-interface-guidelines) by path and return it as Markdown",
+  name: "fetchAppleDocumentation",
+  title: "Fetch Apple Documentation",
+  readOnly: true,
+  destructive: false,
+  idempotent: true,
+  openWorld: true
 )
 struct FetchAppleDocumentationTool {
   @Generable
