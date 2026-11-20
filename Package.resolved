@@ -1,5 +1,5 @@
 {
-  "originHash" : "559130c7e995f509623d2395f8d1bb87d4f2658f8838260158d72eaf52fdf2ab",
+  "originHash" : "61b29ff1cc1a81c40d26d1dcee52ede32fe2fce76ab254248c212ba5781d5867",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -42,8 +42,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mehmetbaykar/swift-ai-hub",
       "state" : {
-        "branch" : "main",
-        "revision" : "0eff898e2927adc2d77d2d6d1f7fdf15d012e2c8"
+        "revision" : "77804785dd69b6c694ec6b4e043c29c9c90d8fcc",
+        "version" : "0.10.0"
       }
     },
     {
