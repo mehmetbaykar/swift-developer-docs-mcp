@@ -1,5 +1,5 @@
 {
-  "originHash" : "1915af1b54d7297dbe47523c23a3b52c6880b26910a446866938a4ef34ee7342",
+  "originHash" : "61b29ff1cc1a81c40d26d1dcee52ede32fe2fce76ab254248c212ba5781d5867",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/hummingbird-project/hummingbird",
       "state" : {
-        "revision" : "341e11f65d8e24cf87e9aae427c040f0084ada4e",
-        "version" : "2.28.1"
+        "revision" : "aa61ccf3fe6e6c012823a0c08a45d79855a26ee0",
+        "version" : "2.29.0"
       }
     },
     {
@@ -42,8 +42,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mehmetbaykar/swift-ai-hub",
       "state" : {
-        "revision" : "4c37b3f64603b83f412241eac20c6f34e1f452a5",
-        "version" : "0.8.0"
+        "revision" : "77804785dd69b6c694ec6b4e043c29c9c90d8fcc",
+        "version" : "0.10.0"
       }
     },
     {
@@ -114,8 +114,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-crypto.git",
       "state" : {
-        "revision" : "f8fad2f95ad67b45f6340c0960e2396094d67e07",
-        "version" : "5.1.1"
+        "revision" : "3280a5f72874d2f73bf25551bbb64f524c76d834",
+        "version" : "5.1.2"
       }
     },
     {
@@ -132,8 +132,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mehmetbaykar/swift-fast-mcp",
       "state" : {
-        "revision" : "519621eb493ea69ba28161477eb6a87fbb301f19",
-        "version" : "2.7.0"
+        "revision" : "3b80a606342f96b445747b16404116dd8155d179",
+        "version" : "3.0.0"
       }
     },
     {
@@ -159,8 +159,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-log.git",
       "state" : {
-        "revision" : "e3da04078777e6a1b72ce19981fbd6539b0847d8",
-        "version" : "1.17.0"
+        "revision" : "c7413d967b97aae67c46452bf7645bdb7b200e8e",
+        "version" : "1.17.2"
       }
     },
     {
@@ -168,8 +168,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-metrics.git",
       "state" : {
-        "revision" : "2c13e7385089ea705ee3009ea6cbe41db843930e",
-        "version" : "2.13.0"
+        "revision" : "5da0b6ea2a89dcce222eec559289e298d357d0a5",
+        "version" : "2.13.1"
       }
     },
     {
@@ -267,8 +267,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-system.git",
       "state" : {
-        "revision" : "869129b7bf4ecc57b97d0193ad29690ca2134750",
-        "version" : "1.8.1"
+        "revision" : "640e5755b5826f4437eaeedd366fd776737db62c",
+        "version" : "1.9.0"
       }
     },
     {
@@ -276,8 +276,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/scinfu/SwiftSoup",
       "state" : {
-        "revision" : "e7f85f4d3dd91ca9a1e94d3328aa1ed5120a8c0f",
-        "version" : "2.14.3"
+        "revision" : "8397a860c6955924b584c50c5265c6aac0970015",
+        "version" : "2.14.4"
       }
     }
   ],

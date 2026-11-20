@@ -85,7 +85,7 @@ npx @mehmetbaykar/swift-developer-docs-mcp help
 | `search <query>` | Search Apple Developer docs. Each result has a title, URL, description, breadcrumbs, tags, and type. A failed search is an error. |
 | `fetch <path-or-url>` | Fetch any doc type — auto-routes based on path (reference docs, HIG, video, external). |
 | `hig [path]` | Fetch Human Interface Guidelines. No path = table of contents. |
-| `video <path>` | Fetch WWDC video transcript (e.g., `videos/play/wwdc2024/10133`). |
+| `video <path>` | Fetch WWDC video transcript (e.g., `videos/play/wwdc2024/10133`). When a session has code samples, the Markdown ends with a Code section that lists each sample with its timestamp and title. |
 | `external <url>` | Fetch external Swift-DocC documentation by URL. |
 | `serve [--port N]` | Start HTTP server (default: port 8080). |
 
@@ -305,7 +305,7 @@ Claude Code, Codex, and Cursor can then use the MCP tools directly when you ask 
 - "Get the WWDC 2024 video transcript for session 10133"
 - "Fetch the Swift-DocC Plugin documentation"
 
-With `swift-fast-mcp` 2.7.0, tools are authored with the macro-based FastMCP API. `searchAppleDocumentation` returns a typed structured JSON payload containing the query and matching results. The three fetch tools return plain Markdown text. `fetchAppleDocumentation` puts a text block before the Markdown when the page is at another path than the requested path: `No page exists at /documentation/<requested>. This is the page at /documentation/<resolved>.` A failure is a tool error (`isError`). The server instructions say that conformance conditions in Apple's data can be missing or wrong.
+With `swift-fast-mcp` 3.0.0, tools are authored with the macro-based FastMCP API. Each tool publishes a title and read-only / open-world hints. `searchAppleDocumentation` returns a typed structured payload (`structuredContent` with an `outputSchema`) containing the query and matching results. The three fetch tools return plain Markdown text. `fetchAppleDocumentation` puts a text block before the Markdown when the page is at another path than the requested path: `No page exists at /documentation/<requested>. This is the page at /documentation/<resolved>.` A failure is a tool error (`isError`). The server instructions say that conformance conditions in Apple's data can be missing or wrong.
 
 ---
 

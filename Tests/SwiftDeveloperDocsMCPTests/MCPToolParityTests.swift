@@ -59,8 +59,47 @@ struct MCPToolParityTests {
     )
     #expect(
       FetchAppleVideoTranscriptTool().description
-        == "Fetch the transcript of an Apple Developer video (https://developer.apple.com/videos) by path and return it as Markdown"
+        == "Fetch the transcript of an Apple Developer video (https://developer.apple.com/videos) by path and return it as Markdown, followed by the session's code samples when it has any"
     )
+  }
+
+  @Test("Tool names stay exactly as listed")
+  func toolNames() {
+    #expect(SearchAppleDocumentationTool().name == "searchAppleDocumentation")
+    #expect(FetchAppleDocumentationTool().name == "fetchAppleDocumentation")
+    #expect(FetchExternalDocumentationTool().name == "fetchExternalDocumentation")
+    #expect(FetchAppleVideoTranscriptTool().name == "fetchAppleVideoTranscript")
+  }
+
+  @Test("Tool titles and hints match upstream sosumi.ai")
+  func toolTitlesAndHints() {
+    let search = SearchAppleDocumentationTool()
+    #expect(search.annotations.title == "Search Apple Documentation")
+    #expect(search.annotations.readOnly == true)
+    #expect(search.annotations.destructive == false)
+    #expect(search.annotations.idempotent == true)
+    #expect(search.annotations.openWorld == true)
+
+    let fetch = FetchAppleDocumentationTool()
+    #expect(fetch.annotations.title == "Fetch Apple Documentation")
+    #expect(fetch.annotations.readOnly == true)
+    #expect(fetch.annotations.destructive == false)
+    #expect(fetch.annotations.idempotent == true)
+    #expect(fetch.annotations.openWorld == true)
+
+    let external = FetchExternalDocumentationTool()
+    #expect(external.annotations.title == "Fetch External Documentation")
+    #expect(external.annotations.readOnly == true)
+    #expect(external.annotations.destructive == false)
+    #expect(external.annotations.idempotent == true)
+    #expect(external.annotations.openWorld == true)
+
+    let video = FetchAppleVideoTranscriptTool()
+    #expect(video.annotations.title == "Fetch Apple Video Transcript")
+    #expect(video.annotations.readOnly == true)
+    #expect(video.annotations.destructive == false)
+    #expect(video.annotations.idempotent == true)
+    #expect(video.annotations.openWorld == true)
   }
 
   @Test("Parameter descriptions match the upstream texts")
