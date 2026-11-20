@@ -3,7 +3,7 @@ import FastMCP
 import Foundation
 
 @Tool(
-  "Fetch the transcript of an Apple Developer video (https://developer.apple.com/videos) by path and return it as Markdown"
+  "Fetch the transcript of an Apple Developer video (https://developer.apple.com/videos) by path and return it as Markdown, followed by the session's code samples when it has any"
 )
 struct FetchAppleVideoTranscriptTool {
   @Generable

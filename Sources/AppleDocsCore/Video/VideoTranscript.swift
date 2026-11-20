@@ -18,6 +18,18 @@ public enum VideoTranscript: Sendable {
     }
   }
 
+  public struct CodeSample: Sendable, Equatable {
+    public let title: String?
+    public let startSeconds: Double?
+    public let code: String
+
+    public init(title: String?, startSeconds: Double?, code: String) {
+      self.title = title
+      self.startSeconds = startSeconds
+      self.code = code
+    }
+  }
+
   public static func fetchVideoTranscriptMarkdown(
     path: String,
     fetcher: @Sendable (_ url: URL) async throws -> (Data, URLResponse) =
@@ -27,6 +39,7 @@ public enum VideoTranscript: Sendable {
     let html = try await fetchVideoTranscriptHtml(url: sourceUrl, fetcher: fetcher)
     let title = extractVideoTitleFromHtml(html: html) ?? "Video \(videoId)"
     let transcriptLines = extractTranscriptLinesFromHtml(html: html)
+    let codeSamples = extractCodeSamplesFromHtml(html: html)
 
     if transcriptLines.isEmpty {
       throw AppleDocsError.notFound
@@ -37,7 +50,8 @@ public enum VideoTranscript: Sendable {
       sourceUrl: sourceUrl.absoluteString,
       collection: collection,
       videoId: videoId,
-      transcriptLines: transcriptLines
+      transcriptLines: transcriptLines,
+      codeSamples: codeSamples
     )
   }
 
@@ -161,12 +175,171 @@ public enum VideoTranscript: Sendable {
     return lines
   }
 
+  /// Extracts the code samples that Apple shows in the Code tab of a session page.
+  ///
+  /// Each sample is an `li.sample-code-main-container` inside `li.supplement.sample-code`,
+  /// with a title line such as `3:40 - <a data-start-time="220">Title</a>`
+  /// and the code in `<pre class="code-source"><code>` with syntax-highlighting spans.
+  public static func extractCodeSamplesFromHtml(html: String) -> [CodeSample] {
+    // Match the `sample-code` class itself, not `sample-code-main-container`.
+    guard
+      let supplementStart = html.range(
+        of: #"<li[^>]*class=["'][^"']*(?<![\w-])sample-code(?![\w-])[^"']*["'][^>]*>"#,
+        options: [.regularExpression, .caseInsensitive]
+      )?.lowerBound
+    else {
+      return []
+    }
+
+    // The escaped code can't contain a literal `</section>`, so it ends the list.
+    let supplementEnd =
+      html.range(of: "</section>", range: supplementStart..<html.endIndex)?.lowerBound
+      ?? html.endIndex
+    let supplement = html[supplementStart..<supplementEnd]
+
+    let containerPattern =
+      #"<li[^>]*class=["'][^"']*\bsample-code-main-container\b[^"']*["'][^>]*>([\s\S]*?)</li>"#
+    guard
+      let containerRegex = try? NSRegularExpression(
+        pattern: containerPattern, options: [.caseInsensitive])
+    else {
+      return []
+    }
+
+    let supplementString = String(supplement)
+    let nsSupplement = supplementString as NSString
+    let matches = containerRegex.matches(
+      in: supplementString, range: NSRange(location: 0, length: nsSupplement.length))
+
+    var samples: [CodeSample] = []
+    for match in matches {
+      guard match.numberOfRanges >= 2,
+        let containerRange = Range(match.range(at: 1), in: supplementString)
+      else {
+        continue
+      }
+      let container = String(supplementString[containerRange])
+
+      guard
+        let codeRegex = try? NSRegularExpression(
+          pattern: #"<pre[^>]*>\s*<code[^>]*>([\s\S]*?)</code>\s*</pre>"#,
+          options: [.caseInsensitive]),
+        let codeRegexMatch = codeRegex.firstMatch(
+          in: container, range: NSRange(container.startIndex..., in: container)),
+        codeRegexMatch.numberOfRanges >= 2,
+        let innerRange = Range(codeRegexMatch.range(at: 1), in: container)
+      else {
+        continue
+      }
+      var code = decodeHtmlEntities(stripHtml(String(container[innerRange])))
+        .replacingOccurrences(of: "\r\n", with: "\n")
+        .replacingOccurrences(of: "\r", with: "\n")
+      if let trimmedLeading = code.range(of: #"^\s*\n"#, options: .regularExpression) {
+        code.removeSubrange(trimmedLeading)
+      }
+      while let last = code.last, last.isWhitespace {
+        code.removeLast()
+      }
+
+      if code.isEmpty {
+        continue
+      }
+
+      let heading = extractCodeSampleHeading(container: container)
+      samples.append(
+        CodeSample(title: heading.title, startSeconds: heading.startSeconds, code: code))
+    }
+
+    return samples
+  }
+
+  private static func extractCodeSampleHeading(container: String) -> (
+    title: String?, startSeconds: Double?
+  ) {
+    guard
+      let paragraphRegex = try? NSRegularExpression(
+        pattern: #"<p[^>]*>([\s\S]*?)</p>"#, options: [.caseInsensitive]),
+      let paragraphMatch = paragraphRegex.firstMatch(
+        in: container, range: NSRange(container.startIndex..., in: container)),
+      paragraphMatch.numberOfRanges >= 2,
+      let paragraphRange = Range(paragraphMatch.range(at: 1), in: container)
+    else {
+      return (nil, nil)
+    }
+
+    let paragraph = String(container[paragraphRange])
+
+    var startSeconds: Double? = nil
+    var titleSource = paragraph
+
+    if let anchorRegex = try? NSRegularExpression(
+      pattern: #"<a([^>]*)>([\s\S]*?)</a>"#, options: [.caseInsensitive]),
+      let anchorMatch = anchorRegex.firstMatch(
+        in: paragraph, range: NSRange(paragraph.startIndex..., in: paragraph)),
+      anchorMatch.numberOfRanges >= 3,
+      let attrsRange = Range(anchorMatch.range(at: 1), in: paragraph),
+      let textRange = Range(anchorMatch.range(at: 2), in: paragraph)
+    {
+      let attrs = String(paragraph[attrsRange])
+      if let startTimeRegex = try? NSRegularExpression(
+        pattern: #"data-start-time=["']([\d.]+)["']"#, options: [.caseInsensitive]),
+        let startTimeMatch = startTimeRegex.firstMatch(
+          in: attrs, range: NSRange(attrs.startIndex..., in: attrs)),
+        startTimeMatch.numberOfRanges >= 2,
+        let valueRange = Range(startTimeMatch.range(at: 1), in: attrs),
+        let parsed = Double(attrs[valueRange]), parsed.isFinite
+      {
+        startSeconds = parsed
+        titleSource = String(paragraph[textRange])
+      }
+    }
+
+    let title =
+      decodeHtmlEntities(stripHtml(titleSource))
+      .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+
+    return (title.isEmpty ? nil : title, startSeconds)
+  }
+
+  private static func renderCodeSamplesMarkdown(codeSamples: [CodeSample]) -> [String] {
+    if codeSamples.isEmpty {
+      return []
+    }
+
+    var lines = ["## Code", ""]
+    for (index, sample) in codeSamples.enumerated() {
+      let timestamp: String? =
+        sample.startSeconds.map { "[\(formatTimestamp(seconds: $0))]" }
+      let parts = [timestamp, sample.title].compactMap { $0 }
+      let heading = parts.isEmpty ? "Sample \(index + 1)" : parts.joined(separator: " ")
+      let fence = codeFenceFor(code: sample.code)
+      lines.append(contentsOf: ["### \(heading)", "", "\(fence)swift", sample.code, fence, ""])
+    }
+    return lines
+  }
+
+  private static func codeFenceFor(code: String) -> String {
+    var longestRun = 0
+    var currentRun = 0
+    for character in code {
+      if character == "`" {
+        currentRun += 1
+        longestRun = max(longestRun, currentRun)
+      } else {
+        currentRun = 0
+      }
+    }
+    return String(repeating: "`", count: max(3, longestRun + 1))
+  }
+
   public static func renderVideoTranscriptMarkdown(
     title: String,
     sourceUrl: String,
     collection: String,
     videoId: String,
-    transcriptLines: [TranscriptLine]
+    transcriptLines: [TranscriptLine],
+    codeSamples: [CodeSample] = []
   ) -> String {
     let transcriptBody =
       transcriptLines
@@ -176,7 +349,7 @@ public enum VideoTranscript: Sendable {
     let formatter = ISO8601DateFormatter()
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
-    return [
+    var parts: [String] = [
       "---",
       "title: \(title)",
       "source: \(sourceUrl)",
@@ -193,12 +366,16 @@ public enum VideoTranscript: Sendable {
       "",
       transcriptBody,
       "",
+    ]
+    parts.append(contentsOf: renderCodeSamplesMarkdown(codeSamples: codeSamples))
+    parts.append(contentsOf: [
       "---",
       "",
       "*Generated by [swift-developer-docs-mcp](https://github.com/mehmetbaykar/swift-developer-docs-mcp) - Making Apple docs AI-readable.*",
       "*This is unofficial content. All transcripts belong to Apple Inc.*",
       "",
-    ].joined(separator: "\n")
+    ])
+    return parts.joined(separator: "\n")
   }
 
   public static func formatTimestamp(seconds: Double) -> String {
@@ -206,5 +383,54 @@ public enum VideoTranscript: Sendable {
     let minutes = rounded / 60
     let remainingSeconds = rounded % 60
     return String(format: "%02d:%02d", minutes, remainingSeconds)
+  }
+
+  private static func stripHtml(_ input: String) -> String {
+    input.replacingOccurrences(of: #"<[^>]+>"#, with: "", options: .regularExpression)
+  }
+
+  private static func decodeHtmlEntities(_ input: String) -> String {
+    guard
+      let regex = try? NSRegularExpression(pattern: #"&(#x?[0-9a-fA-F]+|[a-zA-Z]+);"#)
+    else {
+      return input
+    }
+
+    let nsInput = input as NSString
+    let matches = regex.matches(in: input, range: NSRange(location: 0, length: nsInput.length))
+    var result = input
+    for match in matches.reversed() {
+      guard match.numberOfRanges >= 2,
+        let fullRange = Range(match.range(at: 0), in: result),
+        let entityRange = Range(match.range(at: 1), in: result)
+      else {
+        continue
+      }
+      let entity = String(result[entityRange])
+      let replacement: String
+      if entity.first == "#" {
+        let isHex = entity.dropFirst().first?.lowercased() == "x"
+        let digits = entity.dropFirst(isHex ? 2 : 1)
+        if let codePoint = Int(digits, radix: isHex ? 16 : 10),
+          let scalar = Unicode.Scalar(codePoint)
+        {
+          replacement = String(Character(scalar))
+        } else {
+          replacement = ""
+        }
+      } else {
+        switch entity {
+        case "amp": replacement = "&"
+        case "lt": replacement = "<"
+        case "gt": replacement = ">"
+        case "quot": replacement = "\""
+        case "apos": replacement = "'"
+        case "nbsp": replacement = " "
+        default: replacement = "&\(entity);"
+        }
+      }
+      result.replaceSubrange(fullRange, with: replacement)
+    }
+    return result
   }
 }

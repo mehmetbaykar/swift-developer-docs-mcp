@@ -55,7 +55,7 @@ enum AgentDiscovery {
     SkillDefinition(
       toolName: "fetchAppleVideoTranscript",
       title: "Fetch Apple Video Transcript",
-      description: "Fetch transcript for an Apple Developer video path and return as markdown",
+      description: "Fetch transcript for an Apple Developer video path and return as markdown, followed by the session's code samples when it has any",
       tags: ["apple", "wwdc", "video", "transcript"],
       examples: ["Fetch the transcript for /videos/play/wwdc2021/10133"]),
   ]

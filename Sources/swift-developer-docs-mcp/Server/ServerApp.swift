@@ -587,7 +587,7 @@ struct ServerApp {
     - `searchAppleDocumentation` - Search Apple Developer documentation
     - `fetchAppleDocumentation` - Fetch documentation, HIG, or video transcripts by path
     - `fetchExternalDocumentation` - Fetch external Swift-DocC documentation by URL
-    - `fetchAppleVideoTranscript` - Fetch Apple Developer video transcripts
+    - `fetchAppleVideoTranscript` - Fetch Apple Developer video transcripts, including code samples when present
 
     ## Notes For Agents
 

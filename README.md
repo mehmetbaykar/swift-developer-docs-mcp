@@ -85,7 +85,7 @@ npx @mehmetbaykar/swift-developer-docs-mcp help
 | `search <query>` | Search Apple Developer docs. Each result has a title, URL, description, breadcrumbs, tags, and type. A failed search is an error. |
 | `fetch <path-or-url>` | Fetch any doc type — auto-routes based on path (reference docs, HIG, video, external). |
 | `hig [path]` | Fetch Human Interface Guidelines. No path = table of contents. |
-| `video <path>` | Fetch WWDC video transcript (e.g., `videos/play/wwdc2024/10133`). |
+| `video <path>` | Fetch WWDC video transcript (e.g., `videos/play/wwdc2024/10133`). When a session has code samples, the Markdown ends with a Code section that lists each sample with its timestamp and title. |
 | `external <url>` | Fetch external Swift-DocC documentation by URL. |
 | `serve [--port N]` | Start HTTP server (default: port 8080). |
 
