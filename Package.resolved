@@ -1,5 +1,5 @@
 {
-  "originHash" : "61b29ff1cc1a81c40d26d1dcee52ede32fe2fce76ab254248c212ba5781d5867",
+  "originHash" : "056d04860bc0e21305bdbba4f13d141723d42c022451e1d7cfd5739abddee4b0",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -42,8 +42,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mehmetbaykar/swift-ai-hub",
       "state" : {
-        "revision" : "77804785dd69b6c694ec6b4e043c29c9c90d8fcc",
-        "version" : "0.10.0"
+        "revision" : "0600b07c313ff21a059cb860d5bb5c84c4b8ebbd",
+        "version" : "0.11.0"
       }
     },
     {
@@ -132,8 +132,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mehmetbaykar/swift-fast-mcp",
       "state" : {
-        "revision" : "3b80a606342f96b445747b16404116dd8155d179",
-        "version" : "3.0.0"
+        "revision" : "5ca5293ff0dad77919f54e0a8379adf4bd919165",
+        "version" : "3.0.1"
       }
     },
     {
